@@ -1,0 +1,19 @@
+{
+  "name": "rangeready",
+  "version": "1.0.0",
+  "description": "RF Test Automation Platform",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\" \"npm run dev:electron\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && venv\\Scripts\\activate && python main.py",
+    "dev:electron": "wait-on http://localhost:5173 && electron .",
+    "install:all": "npm install && cd frontend && npm install && cd .. && npm run venv",
+    "venv": "python -m venv backend/venv && backend\\Scripts\\activate && pip install -r backend/requirements.txt"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^28.2.0",
+    "wait-on": "^7.2.0"
+  }
+}

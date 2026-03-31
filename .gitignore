@@ -1,0 +1,32 @@
+# GVB Tech: V5.0 Hardened Matrix Gitignore
+
+# Node / Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Python / Backend
+vh_env/
+venv/
+ENV/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+backend/rangeready.db
+backend/reports/*.pdf
+backend/reports/*.xlsx
+
+# Logs & System
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Build artifacts
+electron/release/
+electron/dist/
+frontend/docs/

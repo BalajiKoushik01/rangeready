@@ -1,63 +1,50 @@
-# GVB Tech: Hardened Matrix (V5.0)
+# RangeReady RF: Industrial HIL Release (V5.1)
 
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-blue.svg)](LICENSE)
-[![Build Status](https://img.shields.io/badge/Release-V5.0.4--STABLE-accent.svg)](https://github.com/BalajiKoushik01/rangeready)
+[![Release](https://img.shields.io/badge/Release-V5.1--INDUSTRIAL-green.svg)](https://github.com/BalajiKoushik01/rangeready)
 
-The **GVB Tech Platform** is a professional-grade RF measurement and automation suite designed for high-throughput component qualification. Reaching its **V5.0 milestone**, the platform integrates an "Infinite Plugin" driver engine with a cinematic "Liquid Glass" user experience, achieving feature parity with industry leaders like **Keysight**, **Rohde & Schwarz**, and **Anritsu**.
-
----
-
-## 🚀 Key Feature Matrix
-
-- **Universal Driver Engine**: Hardware-agnostic measurement layer supporting TCPIP, USB, and GPIB.
-- **Glass Console™ (SCPI Shell)**: Interactive, high-fidelity terminal for real-time instrument command injection.
-- **Marker Intelligence**: Automated peak search, -3dB bandwidth detection, and vertical Q-factor derivation.
-- **Multi-Matrix HUD**: High-throughput "Dual-View" synchronization for parallel S11/S21 trace monitoring.
-- **Vector Calibration (OSLT)**: Professional Wizard for **Open, Short, Load, and Through** correction—matched to ISRO-PHASE-3 standards.
-- **Absolute System Control**: One-click "Terminal Danger Zone" for total system purge and organization-wide branding control.
+**RangeReady RF** is a production-grade Hardware-in-the-Loop (HIL) automation platform designed for high-precision RF instrumentation. Reaching its **V5.1 industrial milestone**, the platform features autonomous hardware discovery and deterministic SCPI orchestration for **Keysight** and **Tektronix** laboratory environments.
 
 ---
 
-## 🏗 Architecture & Layout
+## ⚡ Industrial Feature Matrix
 
-The platform is structured as a modernized measurement monorepo:
-
-```text
-├── backend/            # FastAPI + NumPy DSP Intelligence Engine
-│   ├── drivers/        # Infinite Plugin Hardware Manifests
-│   ├── models/         # SQLAlchemy V5.0 Asset Registry
-│   ├── routers/        # SCPI Dispatcher & System Control
-│   └── services/       # Analysis Engine & OSLT Normalization
-├── frontend/           # React + Vite + Tailwind v4 + Framer Motion
-│   ├── src/assets/     # Liquid Glass brand assets
-│   ├── src/pages/      # Registry, Calibration, Intelligence Runner
-│   └── src/components/ # High-fidelity Glass UI library
-└── docs/               # Engineering Specifications & Software Manifests
-```
+- **Intelligent Auto-Discovery**: Automated network bus interrogation (Port 5025) with recursive `*IDN?` identification for zero-configuration setup.
+- **Dynamic HIL Orchestration**: Direct LAN-based execution of industry-standard SCPI commands targets real Signal Generators and Spectrum Analyzers.
+- **Actionable Error Matrix**: High-fidelity GUI feedback translates low-level bus timeouts into actionable physical troubleshooting steps.
+- **Glass Console™ V2.0**: Enhanced real-time bus monitor broadcasting live SCPI traffic for total operational traceability.
+- **Zero-Click Ignite**: One-step environment provisioning via cross-platform initialization scripts (`.bat` / `.sh`).
 
 ---
 
-## 🛠 Quick Start (V5.0 Stable)
+## 🏗 Documentation Architecture
 
-### 1. Backend (Intelligence Engine)
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate
-pip install -r requirements.txt
-python main.py
-```
+For detailed engineering specifications, please refer to the specialized documentation:
 
-### 2. Frontend (App Matrix)
-```bash
-cd frontend
-npm install
-npm run dev
-```
+| Document | Purpose |
+| :--- | :--- |
+| **[USER_MANUAL.md](./USER_MANUAL.md)** | Step-by-step guide for setup, hardware connection, and troubleshooting. |
+| **[SYSTEM_ARCHITECTURE.md](./SYSTEM_ARCHITECTURE.md)** | Technical deep-dive into the software stack, logic flow, and HIL design. |
+| **[SETUP.md](./SETUP.md)** | Legacy manual environment configuration details. |
 
 ---
 
-## 🏛 Legal & Engineering Credit
-Developed as an **Advanced RF Suite** for professional hardware qualification.
+## 🚀 Quick Start (One-Click Ignite)
+
+Ensure your instrumentation (Keysight/Tektronix) is connected to the same LAN subnet.
+
+### Windows
+1. Navigate to the root directory.
+2. Run `INIT_READY.bat`
+
+### Fedora / Linux
+1. Navigate to the root directory.
+2. Run `chmod +x INIT_READY.sh && ./INIT_READY.sh`
+
+---
+
+## 🏛 Engineering & Legal
+Developed for professional hardware qualification and automated RF testing.
+
 **© 2026 GVB LABS CORE**  
 **Project Lead: Balaji Koushik // GVB Tech**

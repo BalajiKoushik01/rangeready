@@ -1,5 +1,9 @@
 # RangeReady HIL V5.0 - User Manual & Integration Guide
 
+> [!CAUTION]
+> **CONFIDENTIAL AND PROPRIETARY SOFTWARE**  
+> This documentation and the associated software are the exclusive intellectual property of **GVB Tech**.
+
 ## 1. Environment Setup (One-Click Initialization)
 The global Control Hub can be ignited with a single command, automatically loading Python backends, Node/React frontends, and setting up the database.
 

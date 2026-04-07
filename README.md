@@ -1,5 +1,9 @@
 # RangeReady RF: Industrial HIL Release (V5.1)
 
+> [!CAUTION]
+> **CONFIDENTIAL AND PROPRIETARY SOFTWARE**  
+> This software is the exclusive property of **GVB Tech**. Unauthorized access, reproduction, or distribution is strictly prohibited.
+
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/badge/Release-V5.1--INDUSTRIAL-green.svg)](https://github.com/BalajiKoushik01/rangeready)
 

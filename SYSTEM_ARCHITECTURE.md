@@ -1,4 +1,8 @@
-# RangeReady RF - System Architecture & Engineering Specifications
+# RangeReady RF v5.1 - System Architecture & Engineering Logic
+
+> [!CAUTION]
+> **CONFIDENTIAL AND PROPRIETARY SOFTWARE**  
+> This engineering design and its implementation are the exclusive property of **GVB Tech**.
 
 ## 1. Software Stack Overview
 The RangeReady platform is built using industry-standard, production-grade software components to ensure reliability and high performance in automated test environments.

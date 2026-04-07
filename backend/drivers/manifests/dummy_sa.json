@@ -1,0 +1,31 @@
+{
+  "id": "dummy_sa_v1",
+  "manufacturer": "GVB Tech",
+  "model_regex": "DUMMY-SA-1000",
+  "instrument_class": "Signal Analyzer",
+  "capability_flags": {
+    "supports_live_stream": true
+  },
+  "safe_limits": {
+    "max_power_dbm": 30,
+    "min_freq_hz": 1000000,
+    "max_freq_hz": 26500000000
+  },
+  "commands": {
+    "set_center_freq": {
+      "command": "FREQ:CENT {0}",
+      "type": "set",
+      "parameters": ["freq_hz"]
+    },
+    "set_span": {
+      "command": "FREQ:SPAN {0}",
+      "type": "set",
+      "parameters": ["span_hz"]
+    },
+    "fetch_trace": {
+      "command": "TRAC:DATA? TRACE1",
+      "type": "query",
+      "parameters": []
+    }
+  }
+}

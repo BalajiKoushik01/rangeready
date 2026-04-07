@@ -1979,6 +1979,12 @@ module.exports = {
 
 10. When in doubt about what ISRO expects in a report — ask the domain expert.
     Do not guess. This is the product's core differentiator.
+
+11. AI models must run 100% OFFLINE (Option A).
+    Never send sensitive RF measurements to external cloud APIs.
+
+12. Use the SOLT Calibration Engine for custom error correction.
+    Native software-side vector correction is mandatory for proprietary cal-kits.
 ```
 
 ### Git Commit Convention
@@ -2018,13 +2024,20 @@ Before any PR merges to `develop`:
 ---
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                                                                   │
-│   ◈ RANGEREADY  ·  Engineering Specification  ·  v1.0           │
-│   GVB Tech Solutions  ·  Sriharikota / Bengaluru                │
-│   CONFIDENTIAL — Internal Use Only                               │
-│                                                                   │
-│   "Mission control quality. For every RF lab in India."          │
-│                                                                   │
+  ◈ RANGEREADY  ·  Engineering Specification  ·  v2.0           │
+  GVB Tech Solutions  ·  Sriharikota / Bengaluru                │
+  CONFIDENTIAL — Internal Use Only                               │
+                                                                   │
+  "Mission control quality. For every RF lab in India."          │
+                                                                   │
 └─────────────────────────────────────────────────────────────────┘
+
+---
+
+## 1. Project Overview & Version History
+
+| Version | Date | Changes | Author |
+|---|---|---|---|
+| 1.0 | 2025-10-15 | Initial baseline for TRM bench testing | Balaji Koushik |
+| 2.0 | 2026-04-07 | Enterprise ATE: AI Diagnostics, Switch Matrix, LXI Discovery | Balaji Koushik |
 ```

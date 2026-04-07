@@ -1,7 +1,7 @@
 import numpy as np
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
-class AnalysisEngine:
+class RFAnalysisEngine:
     """
     Advanced RF Trace Analysis Engine.
     Implements automated marker logic found in high-end Anritsu and Keysight analyzers.

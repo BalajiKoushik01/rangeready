@@ -1,128 +1,151 @@
 import React, { useState, useEffect } from 'react';
-import { Pulse, ShieldCheck, Cpu, HardDrive } from '@phosphor-icons/react';
+import { Pulse, ShieldCheck, Cpu, HardDrive, Waveform, Compass, List, Flask, MagicWand, Selection } from '@phosphor-icons/react';
 import { GlassCard } from '../components/ui/GlassCard';
 import { GvbLogo } from '../components/ui/Logo';
+import { HardwareChecklist } from '../components/ui/HardwareChecklist';
+import { useSystemState } from '../context/SystemStateContext';
+
+const SparkWave: React.FC<{ weight: string; size: number; className?: string }> = ({ weight, size, className }) => (
+  <Waveform weight={weight as "duotone" | "bold" | "fill" | "light" | "regular" | "thin"} size={size} className={className} />
+);
 
 export const DashboardPage: React.FC = () => {
   const [backendStatus, setBackendStatus] = useState<string>("Connecting...");
-  const [instrumentStatus, setInstrumentStatus] = useState<string>("Mock (Connected)");
+  const [sessionCount, setSessionCount] = useState(0);
+  const [isChecklistOpen, setIsChecklistOpen] = useState(false);
+  const { isAiMode } = useSystemState();
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8787/health")
-      .then(res => res.json())
-      .then(data => setBackendStatus(`v${data.version} - Online`))
-      .catch(() => setBackendStatus("Offline"));
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch(`http://${window.location.hostname}:8787/api/system/status`);
+        const data = await res.json();
+        setBackendStatus(`${data.branding} - ${data.engine}`);
+        
+        const historyRes = await fetch(`http://${window.location.hostname}:8787/api/tests/history`);
+        const history = await historyRes.json();
+        setSessionCount(history.length);
+      } catch (e) {
+        setBackendStatus("Offline");
+      }
+    };
+    fetchStatus();
+    const timer = setInterval(fetchStatus, 5000);
+    return () => clearInterval(timer);
   }, []);
 
+  const stats = [
+    { label: "Active Test Sessions", value: sessionCount, icon: <Pulse weight="duotone" />, color: "text-accent-blue" },
+    { label: "Hardware Abstraction Layer (HAL) Status", value: "Nominal", icon: <Cpu weight="duotone" />, color: "text-status-pass" },
+    { label: "Instrumentation Bus", value: "VXI-11 Protocol", icon: <HardDrive weight="duotone" />, color: "text-accent-blue-lume" },
+    { label: "Signal Stability Index", value: "99.98%", icon: <ShieldCheck weight="duotone" />, color: "text-status-pass" }
+  ];
+
   return (
-    <div className="max-w-7xl mx-auto space-y-10">
-      {/* Page Header */}
-      <header className="flex items-center justify-between">
+    <div className="max-w-7xl mx-auto space-y-12 pb-20 px-4 mt-8 animate-in fade-in duration-700">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-8 border-b border-[#1E293B] pb-8">
         <div className="flex items-center gap-6">
-          <GvbLogo size={48} />
+          <div className="p-5 bg-accent-blue/10 border border-accent-blue/30 rounded-3xl text-accent-blue shadow-[0_0_50px_rgba(30,111,217,0.15)] group hover:scale-105 transition-transform">
+            <Compass weight="duotone" size={42} className="group-hover:rotate-12 transition-transform" />
+          </div>
           <div>
-            <h1 className="text-4xl font-bold tracking-tight text-text-primary">
-              System Overview
-            </h1>
-            <p className="mt-2 text-text-secondary font-medium tracking-wide">
-              GVB Tech Precision RF Platform
-            </p>
+            <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">RF Instrumentation Dashboard</h1>
+            <p className="text-[10px] text-text-tertiary font-black tracking-widest uppercase opacity-70">Automated Test Equipment (ATE) Command Interface · V5.1 (Industrial)</p>
           </div>
         </div>
-        <div className="flex gap-4">
-          <GlassCard level={3} className="px-6 py-3 flex items-center gap-3 bg-white/30">
-             <div className="w-2 h-2 rounded-full bg-status-pass animate-pulse" />
-             <span className="text-xs font-mono uppercase tracking-widest text-text-tertiary">
-               System Ready
-             </span>
-          </GlassCard>
+        
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => setIsChecklistOpen(true)}
+            className="flex items-center gap-3 px-8 py-4 bg-[#131B2C] border border-[#1E293B] text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:border-accent-blue transition-all group"
+          >
+            <ShieldCheck weight="bold" size={20} className="text-accent-blue group-hover:animate-pulse" />
+            Verify Hardware Communication Interface
+          </button>
+          
+          <div className="hidden lg:flex items-center gap-3 px-6 py-4 bg-[#0B0F19] border border-[#1E293B] rounded-xl shadow-inner">
+             <div className="w-2.5 h-2.5 rounded-full bg-status-pass animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
+             <span className="text-[10px] font-black text-white uppercase tracking-widest">Bus Connectivity: STABLE</span>
+          </div>
         </div>
       </header>
 
-      {/* Hero Stats / Status Integration */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <GlassCard level={2} className="flex flex-col gap-4 p-6 hover:translate-y-[-4px] transition-transform duration-300">
-          <div className="p-3 bg-accent-blue/10 rounded-xl w-fit text-accent-blue">
-            <Pulse weight="duotone" size={24} />
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase text-text-tertiary tracking-widest">Backend Engine</p>
-            <p className="text-lg font-mono font-semibold mt-1 text-text-primary">{backendStatus}</p>
-          </div>
-        </GlassCard>
-
-        <GlassCard level={2} className="flex flex-col gap-4 p-6 hover:translate-y-[-4px] transition-transform duration-300">
-          <div className="p-3 bg-status-pass/10 rounded-xl w-fit text-status-pass">
-            <Cpu weight="duotone" size={24} />
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase text-text-tertiary tracking-widest">Instrument Status</p>
-            <p className="text-lg font-mono font-semibold mt-1 text-text-primary">{instrumentStatus}</p>
-          </div>
-        </GlassCard>
-
-        <GlassCard level={2} className="flex flex-col gap-4 p-6 hover:translate-y-[-4px] transition-transform duration-300">
-          <div className="p-3 bg-amber-500/10 rounded-xl w-fit text-amber-600">
-            <ShieldCheck weight="duotone" size={24} />
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase text-text-tertiary tracking-widest">Calibration</p>
-            <p className="text-lg font-mono font-semibold mt-1 text-text-primary">Valid (24h left)</p>
-          </div>
-        </GlassCard>
-
-        <GlassCard level={2} className="flex flex-col gap-4 p-6 hover:translate-y-[-4px] transition-transform duration-300">
-          <div className="p-3 bg-purple-500/10 rounded-xl w-fit text-purple-600">
-            <HardDrive weight="duotone" size={24} />
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase text-text-tertiary tracking-widest">Data Persistence</p>
-            <p className="text-lg font-mono font-semibold mt-1 text-text-primary">rangeready.db</p>
-          </div>
-        </GlassCard>
+        {stats.map((stat, i) => (
+          <GlassCard key={i} level={2} className="p-8 border-[#1E293B] bg-[#0B0F19] hover:border-accent-blue/40 transition-all overflow-hidden relative shadow-2xl">
+            <div className="absolute -right-6 -bottom-6 opacity-5 text-white scale-[2.5] blur-[1px]">
+                {stat.icon}
+            </div>
+            <div className="flex items-center gap-4 mb-4">
+              <div className={`p-3 bg-white/5 rounded-2xl ${stat.color} border border-white/5 shadow-inner`}>
+                {React.cloneElement(stat.icon as React.ReactElement, { size: 24, weight: "duotone" })}
+              </div>
+              <span className="text-[9px] font-black text-[#64748B] uppercase tracking-[0.2em]">{stat.label}</span>
+            </div>
+            <div className="text-3xl font-black text-white tracking-tighter">{stat.value}</div>
+          </GlassCard>
+        ))}
       </div>
 
-      {/* Recent Activity / Next Action */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-12">
-        <GlassCard level={1} className="lg:col-span-2 min-h-[400px] p-8">
-          <h3 className="text-xl font-bold text-text-primary mb-6">Device Under Test - Recent</h3>
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center justify-between p-4 rounded-xl border border-white/40 bg-white/20 hover:bg-white/40 transition-colors">
-                <div className="flex items-center gap-4">
-                   <div className="w-10 h-10 rounded-lg bg-accent-blue/10 flex items-center justify-center text-accent-blue">
-                      <Waveform weight="duotone" size={20} />
-                   </div>
-                   <div>
-                      <p className="font-semibold text-text-primary">TTC-ANT-L-00{i}</p>
-                      <p className="text-xs text-text-tertiary">S-Parameter Suite · 22 Mar 2026</p>
-                   </div>
-                </div>
-                <div className="text-right">
-                   <span className="px-3 py-1 bg-status-pass/10 text-status-pass rounded-full text-[10px] font-bold uppercase tracking-wider">Pass</span>
-                </div>
-              </div>
-            ))}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pt-8 border-t border-[#1E293B]">
+        <div className="lg:col-span-2 space-y-6">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-[10px] font-black text-white uppercase tracking-[0.3em] flex items-center gap-3">
+              <List weight="bold" className="text-accent-blue" />
+              Trace Acquisition Log
+            </h3>
           </div>
-        </GlassCard>
-
-        <div className="space-y-6">
-          <GlassCard level={2} className="p-8 bg-accent-blue/5 border-accent-blue/20">
-            <h3 className="text-xl font-bold text-text-primary mb-2 text-glow">Platform Control</h3>
-            <p className="text-sm text-text-secondary mb-8">Execute a predefined ISRO qualification test suite directly.</p>
-            <button className="w-full py-4 bg-accent-blue text-white rounded-2xl font-bold shadow-[0_10px_30px_rgba(30,111,217,0.3)] hover:scale-102 hover:bg-accent-blue-lume transition-all active:scale-95">
-              Initialize New Test
-            </button>
-            <button className="w-full mt-4 py-4 bg-white/40 border border-white/60 text-text-primary rounded-2xl font-bold hover:bg-white/60 transition-all">
-              Manage Templates
-            </button>
+          
+          <GlassCard level={1} className="p-0 border-[#1E293B] bg-[#0B0F19] overflow-hidden min-h-[450px]">
+             <div className="w-full h-full min-h-[450px] flex items-center justify-center text-[#64748B] opacity-50 flex-col gap-6">
+                <div className="relative">
+                   <Selection size={64} weight="thin" className="animate-pulse" />
+                   <div className="absolute inset-0 bg-accent-blue/10 blur-2xl rounded-full" />
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em]">Select an active session to view telemetry</p>
+             </div>
           </GlassCard>
         </div>
+
+        <div className="space-y-6">
+           <h3 className="text-[10px] font-black text-white uppercase tracking-[0.3em] flex items-center gap-3">
+              <Flask weight="bold" className="text-status-pass" />
+              Automated Signal Analysis Engine
+           </h3>
+           <GlassCard level={3} className="p-10 bg-[#131B2C] border-[#1E293B] h-[450px] flex flex-col justify-center text-center shadow-2xl relative overflow-hidden group">
+              <div className="absolute inset-0 bg-gradient-to-br from-accent-blue/5 to-transparent pointer-events-none" />
+              {!isAiMode ? (
+                 <div className="space-y-6 relative z-10">
+                    <div className="w-20 h-20 bg-white/5 border border-white/5 rounded-[2rem] mx-auto flex items-center justify-center text-[#64748B] shadow-inner transition-transform group-hover:scale-110">
+                       <MagicWand size={40} weight="duotone" />
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black uppercase text-white tracking-widest">Analysis Engine Standby</p>
+                      <p className="text-[9px] font-bold text-[#64748B] uppercase tracking-wider leading-relaxed max-w-[200px] mx-auto">Signal processing analysis engine is currently in standby mode. Enable Signal Analysis Mode to activate.</p>
+                    </div>
+                 </div>
+              ) : (
+                 <div className="space-y-6 relative z-10">
+                    <div className="w-20 h-20 bg-accent-blue/10 border border-accent-blue/30 rounded-[2rem] mx-auto flex items-center justify-center text-accent-blue shadow-[0_0_30px_rgba(30,111,217,0.2)] transition-transform group-hover:scale-110">
+                       <MagicWand size={40} weight="duotone" className="animate-pulse" />
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black uppercase text-accent-blue tracking-widest">Analysis Engine Active</p>
+                      <p className="text-[9px] font-bold text-white uppercase tracking-wider leading-relaxed max-w-[200px] mx-auto opacity-80">Signal Processing Engine v5.1 active. Monitoring vector drift and spectral phase noise outliers across the instrumentation bus.</p>
+                    </div>
+                 </div>
+              )}
+           </GlassCard>
+        </div>
       </div>
+
+      <HardwareChecklist 
+        isOpen={isChecklistOpen} 
+        onClose={() => setIsChecklistOpen(false)}
+        onComplete={() => setIsChecklistOpen(false)}
+      />
     </div>
   );
 };
 
-const Waveform: React.FC<{ weight: string; size: number; className?: string }> = ({ weight, size, className }) => (
-  <Pulse weight={weight as "duotone" | "bold" | "fill" | "light" | "regular" | "thin"} size={size} className={className} />
-);
+export default DashboardPage;

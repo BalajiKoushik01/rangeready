@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, JSON, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 import datetime
-from database import Base
+from database_base import Base
 
 class TestTemplate(Base):
     __tablename__ = "test_templates"

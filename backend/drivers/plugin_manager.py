@@ -18,8 +18,8 @@ class PluginManager:
         """Discovers all .py files in drivers/ and registers classes inheriting from BaseInstrumentDriver."""
         drivers_path = os.path.dirname(__file__)
         for filename in os.listdir(drivers_path):
-            if filename.endswith(".py") and filename not in ["__init__.py", "base_driver.py"]:
-                module_name = f"backend.drivers.{filename[:-3]}"
+            if filename.endswith(".py") and filename not in ["__init__.py", "base_driver.py", "plugin_manager.py", "manifest_loader.py"]:
+                module_name = f"drivers.{filename[:-3]}"
                 try:
                     module = importlib.import_module(module_name)
                     # Register classes

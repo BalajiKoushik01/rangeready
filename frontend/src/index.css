@@ -1,81 +1,81 @@
 @import "tailwindcss";
 
 @theme {
-  /* GVB Tech Premium Palette */
-  --color-accent-blue: #1E6FD9;
-  --color-accent-blue-soft: #EEF4FD;
-  --color-accent-blue-lume: #5CA0F8;
+  /* Industrial Premium Dark Palette */
+  --color-accent-blue: #0E73F6;         /* Sharp vibrant blue */
+  --color-accent-blue-soft: #1E293B;    /* Deep slate container */
+  --color-accent-blue-lume: #3B82F6;    /* Hover blue */
   
-  --color-bg-base: #F8F7F4;
-  --color-bg-surface: rgba(255, 255, 255, 0.45);
-  --color-bg-surface-hover: rgba(255, 255, 255, 0.70);
+  --color-bg-base: #0B0F19;             /* Very dark midnight blue/black */
+  --color-bg-surface: #131B2C;          /* Elevated panel */
+  --color-bg-surface-hover: #1A243A;    /* Panel hover */
+  --color-bg-elevated: #1E293B;         /* Highest depth */
   
-  --color-text-primary: #1A1814;
-  --color-text-secondary: #4A4844;
-  --color-text-tertiary: #8A8884;
+  --color-text-primary: #F8FAFC;        /* High contrast white */
+  --color-text-secondary: #CBD5E1;      /* Muted white/grey */
+  --color-text-tertiary: #64748B;       /* Low priority info */
   
-  --color-status-pass: #16A34A;
-  --color-status-fail: #DC2626;
+  --color-status-pass: #10B981;         /* Sharp Emerald */
+  --color-status-fail: #EF4444;         /* Sharp Red */
+  --color-status-warn: #F59E0B;         /* Amber */
 
-  /* Custom Glass Shadows */
-  --shadow-glass-smooth: 0 8px 32px 0 rgba(31, 38, 135, 0.08);
-  --shadow-glass-elevated: 0 12px 48px 0 rgba(31, 38, 135, 0.15);
+  --color-glass-border: rgba(255, 255, 255, 0.08);
+
+  /* Precise, sharp shadows for depth, not blurs */
+  --shadow-industrial-flat: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.5);
+  --shadow-industrial-deep: 0 10px 15px -3px rgba(0, 0, 0, 0.7), 0 4px 6px -4px rgba(0, 0, 0, 0.7);
 }
 
 @layer base {
-  :root {
-    --glass-blur: 16px;
-    --glass-blur-heavy: 32px;
-    --glass-border: rgba(255, 255, 255, 0.80);
-    --glass-border-dim: rgba(255, 255, 255, 0.35);
-  }
-
   body {
     background-color: var(--color-bg-base);
     background-image: 
-      radial-gradient(circle at 10% 20%, rgba(30, 111, 217, 0.03) 0%, transparent 40%),
-      radial-gradient(circle at 90% 80%, rgba(30, 111, 217, 0.03) 0%, transparent 40%);
+      radial-gradient(circle at top left, var(--color-bg-surface) 0%, transparent 50%),
+      radial-gradient(circle at bottom right, rgba(14, 115, 246, 0.05) 0%, transparent 50%);
     background-attachment: fixed;
     min-height: 100vh;
-    @apply text-slate-900 antialiased font-sans;
+    @apply text-text-primary antialiased font-sans;
   }
 }
 
 @layer components {
-  /* Level 1: Liquid Glass Base */
+  /* Level 1: Core Panel structure (No Glassmorphism) */
   .glass-card {
-    @apply bg-white/40 backdrop-blur-[16px] border border-white/60 rounded-2xl shadow-sm transition-all duration-300;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04), inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+    @apply bg-[#131B2C] border border-white/10 rounded-lg transition-all duration-200;
+    box-shadow: var(--shadow-industrial-flat);
   }
 
   .glass-card:hover {
-    @apply bg-white/60 border-white/80 shadow-md;
-    transform: translateY(-2px);
+    @apply border-white/20 bg-[#1A243A];
   }
 
-  /* Level 2: Elevated Surface */
+  /* Level 2: Elevated Dialogs/Modals */
   .glass-elevated {
-    @apply bg-white/70 backdrop-blur-[32px] border border-white rounded-3xl shadow-lg;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08), inset 0 0 0 1px rgba(255, 255, 255, 1);
+    @apply bg-[#1E293B] border border-accent-blue/30 rounded-xl;
+    box-shadow: var(--shadow-industrial-deep);
   }
 
-  /* Level 3: Inset / Interactive Surface */
+  /* Level 3: Form Inputs and Value displays */
   .glass-inset {
-    @apply bg-black/5 backdrop-blur-sm border border-white/20 rounded-xl;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+    @apply bg-black/40 border border-white/10 rounded-md text-text-primary;
+    box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.5);
   }
 
   .nav-active {
-    @apply bg-accent-blue/10 text-accent-blue shadow-[0_0_20px_rgba(30,111,217,0.1)];
-    box-shadow: inset 0 0 0 1px rgba(30, 111, 217, 0.2);
+    @apply bg-accent-blue text-white shadow-lg border-l-4 border-l-blue-300;
   }
 }
 
 @layer utilities {
   .text-glow {
-    text-shadow: 0 0 15px rgba(30, 111, 217, 0.3);
+    text-shadow: 0 0 10px rgba(14, 115, 246, 0.5);
   }
   .bg-mesh-gradient {
-    background-image: linear-gradient(135deg, #F8F7F4 0%, #E8F1FF 100%);
+    background-image: linear-gradient(135deg, #131B2C 0%, #0B0F19 100%);
+  }
+  .industrial-grid {
+    background-size: 40px 40px;
+    background-image: linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+                      linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
   }
 }

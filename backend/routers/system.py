@@ -7,6 +7,15 @@ from models.instrument import Instrument, InstrumentCalibration
 from typing import Annotated
 import os
 import shutil
+from pydantic import BaseModel
+from services.config_service import config_service
+from services.discovery_service import discovery_service
+from services.visa_service import visa_service
+import asyncio
+
+class ConfigUpdate(BaseModel):
+    role: str
+    ip: str
 
 router = APIRouter()
 
@@ -40,12 +49,32 @@ def reset_system(db: Annotated[Session, Depends(get_db)]):
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/status")
-def get_system_status():
-    """Diagnostic check for the core measurement matrix."""
-    return {
-        "engine": "active",
-        "protocol": "ISRO-PHASE-3",
-        "precision": "vector",
-        "branding": "official-liquid-glass"
-    }
+@router.get("/config")
+def get_config():
+    """Returns the current instrument configurations."""
+    return config_service.get_all_instruments()
+
+@router.post("/config")
+def update_config(update: ConfigUpdate):
+    """Updates the IP address for a specific instrument role."""
+    config_service.set_instrument_ip(update.role, update.ip)
+    return {"status": "success", "config": config_service.get_all_instruments()}
+
+@router.post("/test_connection")
+def test_connection(update: ConfigUpdate):
+    """Tests the connection to an instrument by IP and role."""
+    if visa_service.connect(update.ip):
+        idn = visa_service.identify(update.ip)
+        visa_service.disconnect(update.ip)
+        if idn:
+            return {"status": "success", "idn": idn}
+    raise HTTPException(status_code=400, detail="Handshake failed or instrument unresponsive.")
+
+@router.post("/discover")
+async def trigger_discovery():
+    """Triggers an asynchronous subnet scan and identification."""
+    # Run scanning in the background to not block HTTP request immediately
+    # The scan broadcasts its results via web sockets
+    asyncio.create_task(discovery_service.scan_network())
+    return {"status": "scanning", "message": "Discovery sequence initiated."}
+

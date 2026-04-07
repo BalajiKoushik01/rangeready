@@ -4,13 +4,13 @@ from database import get_db
 from models.test_session import CalibrationRecord
 import datetime
 from pydantic import BaseModel
-from typing import Dict
+from typing import Dict, Any
 
 router = APIRouter()
 
 class CalibrationCreate(BaseModel):
     cal_type: str = "OSL"
-    coefficients: Dict[str, any]
+    coefficients: Dict[str, Any]
     temperature_c: float = None
 
 @router.post("/")

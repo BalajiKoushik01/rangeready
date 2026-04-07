@@ -1,6 +1,6 @@
 import random
 from typing import List, Dict
-from backend.drivers.base_driver import BaseInstrumentDriver
+from drivers.base_driver import BaseInstrumentDriver
 
 class SiglentSSADriver(BaseInstrumentDriver):
     """

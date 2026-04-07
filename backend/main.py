@@ -6,17 +6,31 @@ import json
 import asyncio
 from typing import List
 from database import init_db, get_db
-from routers import tests, reports, templates, calibration, commands, instruments, system
+from routers import tests, reports, templates, calibration, commands, instruments, system, ai
 from services.broadcast import manager
 from drivers.plugin_manager import PluginManager
+import os
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """
+    State-aware lifecycle manager for the FastAPI application.
+    
+    Startup:
+    1. Initializes the SQLite database engine and ensures all tables exist.
+    2. Discovers and loads hardware driver plugins via the PluginManager.
+    3. Ensures the 'models/' directory exists for offline AI GGUF files.
+    
+    Shutdown:
+    1. Triggers cleanup for any active instrument connections or background tasks.
+    """
     # Startup: Initialize the database
     print("GVB Tech Backend: Initializing V5.0 SQLite...")
     init_db()
     # Re-load driver plugins on startup
     PluginManager.load_plugins()
+    # Ensure models directory exists
+    os.makedirs("./models", exist_ok=True)
     yield
     # Shutdown: Clean up connections
     print("GVB Tech Backend Shutting Down...")
@@ -40,6 +54,7 @@ app.include_router(calibration.router, prefix="/api/calibration", tags=["Calibra
 app.include_router(commands.router, prefix="/api/commands", tags=["Hardware Control"])
 app.include_router(instruments.router, prefix="/api/instruments", tags=["Asset Registry"])
 app.include_router(system.router, prefix="/api/system", tags=["System Control"])
+app.include_router(ai.router, prefix="/api/ai", tags=["Offline Intelligence"])
 
 @app.get("/health")
 async def health():
@@ -69,4 +84,4 @@ if __name__ == "__main__":
     port = 8787
     if "--port" in sys.argv:
         port = int(sys.argv[sys.argv.index("--port") + 1])
-    uvicorn.run(app, host="127.0.0.1", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)

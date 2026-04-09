@@ -7,7 +7,7 @@
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/badge/Release-V5.1--INDUSTRIAL-green.svg)](https://github.com/BalajiKoushik01/rangeready)
 
-**RangeReady RF** is a production-grade Hardware-in-the-Loop (HIL) automation platform designed for high-precision RF instrumentation. Reaching its **V5.1 industrial milestone**, the platform features autonomous hardware discovery and deterministic SCPI orchestration for **Keysight** and **Tektronix** laboratory environments.
+**RangeReady RF** is a production-grade Hardware-in-the-Loop (HIL) automation platform designed for high-precision RF instrumentation. Reaching its **V5.1 industrial milestone**, the platform features autonomous hardware discovery and deterministic SCPI orchestration for **Keysight** and **Rohde & Schwarz** laboratory environments.
 
 ---
 
@@ -16,6 +16,7 @@
 - **Intelligent Auto-Discovery**: Automated network bus interrogation (Port 5025) with recursive `*IDN?` identification for zero-configuration setup.
 - **Dynamic HIL Orchestration**: Direct LAN-based execution of industry-standard SCPI commands targets real Signal Generators and Spectrum Analyzers.
 - **Actionable Error Matrix**: High-fidelity GUI feedback translates low-level bus timeouts into actionable physical troubleshooting steps.
+- **Offline Toolkit**: Pre-configured portable environment for restricted network deployment (Pendrive Mode).
 - **Glass Console™ V2.0**: Enhanced real-time bus monitor broadcasting live SCPI traffic for total operational traceability.
 - **Zero-Click Ignite**: One-step environment provisioning via cross-platform initialization scripts (`.bat` / `.sh`).
 

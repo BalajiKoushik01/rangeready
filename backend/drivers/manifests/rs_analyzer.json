@@ -1,0 +1,22 @@
+{
+    "id": "rs_analyzer_general",
+    "manufacturer": "Rohde & Schwarz",
+    "model_regex": "FSV|FSW|FPS|FSP|FSN",
+    "instrument_class": "Spectrum Analyzer",
+    "capability_flags": {
+        "vxi11": true,
+        "scpi": true,
+        "iq_data": true
+    },
+    "commands": {
+        "reset": { "command": "*RST", "type": "trigger" },
+        "get_trace": { "command": "TRAC? CH1,TRACE1", "type": "query" },
+        "set_start_freq": { "command": "SENS:FREQ:STAR {value}", "type": "set", "parameters": ["value"] },
+        "set_stop_freq": { "command": "SENS:FREQ:STOP {value}", "type": "set", "parameters": ["value"] }
+    },
+    "safe_limits": {
+        "max_input_power": 30,
+        "min_freq": 5000,
+        "max_freq": 7500000000
+    }
+}

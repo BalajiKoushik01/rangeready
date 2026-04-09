@@ -1,20 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Pulse, 
-  Selection, 
+  Broadcast, 
   Target, 
   TerminalWindow, 
   ArrowClockwise, 
   Play, 
-  Stop, 
-  ChartBar, 
-  Flask, 
-  MagicWand, 
-  HardDrive, 
-  Warning, 
+  Waveform, 
+  Cpu, 
   ShieldCheck, 
   CheckCircle,
-  CaretRight
+  Scan,
+  Layout
 } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GlassCard } from '../components/ui/GlassCard';
@@ -51,9 +47,9 @@ export const TestRunnerPage: React.FC = () => {
   const bandLimits = BAND_PRESETS[activeBand] || BAND_PRESETS["S-Band"];
 
   const steps = [
-    { name: "S11 Scattering Parameter", target: `${bandLimits.min.toFixed(1)} - ${bandLimits.max.toFixed(1)} GHz`, limit: -12.0 },
-    { name: "Voltage Standing Wave Ratio (VSWR)", target: `${bandLimits.min.toFixed(1)} - ${bandLimits.max.toFixed(1)} GHz`, limit: 1.5 },
-    { name: "S21 Transmission Parameter", target: `${bandLimits.min.toFixed(1)} - ${bandLimits.max.toFixed(1)} GHz`, limit: -2.0 }
+    { name: "Frequency Reference Synchronization", target: `${bandLimits.min.toFixed(1)} - ${bandLimits.max.toFixed(1)} GHz`, limit: 0.1 },
+    { name: "RF Power Output Linearity", target: `${bandLimits.min.toFixed(1)} - ${bandLimits.max.toFixed(1)} GHz`, limit: 1.0 },
+    { name: "Spurious Emission Analysis", target: `Full Bandmask Scan`, limit: -60.0 }
   ];
 
   const goldenTrace = useMemo<[number[], number[]]>(() => {
@@ -70,9 +66,8 @@ export const TestRunnerPage: React.FC = () => {
     return [freqs, amps];
   }, [bandLimits.min, bandLimits.max]);
 
-  const { peak, bandwidth, qFactor } = useMemo(() => {
+  const { peak, qFactor } = useMemo(() => {
      let p = null;
-     let bw = 0;
      let qf = 0;
      if (traceData[0] && traceData[0].length > 0) {
         const freqs = traceData[0];
@@ -81,15 +76,14 @@ export const TestRunnerPage: React.FC = () => {
         p = { freq: freqs[maxIdx], amp: amps[maxIdx] };
         
         if (p.amp > -15) {
-           bw = 0.12; 
            qf = p.freq / 0.12;
         }
      }
-     return { peak: p, bandwidth: bw, qFactor: qf };
+     return { peak: p, qFactor: qf };
   }, [traceData]);
 
   useEffect(() => {
-    const ws = new WebSocket(`ws://${window.location.hostname}:8787/ws`);
+    const ws = new WebSocket(`ws://${globalThis.location.hostname}:8787/ws`);
     
     ws.onmessage = (event) => {
       try {
@@ -100,7 +94,7 @@ export const TestRunnerPage: React.FC = () => {
            const step = range / amps.length;
            const freqs = Array.from({length: amps.length}, (_, i) => bandLimits.min + (i * step));
            setTraceData([freqs, amps]);
-           setSecondaryTraceData([freqs, amps.map((a: number) => a - 10)]);
+           setSecondaryTraceData([[], []]);
         } else if (payload.type === "status_update") {
            if (typeof payload.message === 'object' && payload.message.traceability) {
                const { traceability } = payload.message;
@@ -144,10 +138,10 @@ export const TestRunnerPage: React.FC = () => {
     }]);
     
     try {
-        await fetch(`http://${window.location.hostname}:8787/api/tests/run?dut_name=RF_DEVICE_ALPHA&dut_serial=S-00891&template_id=TTC_ANT_L`, {
+        await fetch(`http://${globalThis.location.hostname}:8787/api/tests/run?dut_name=UUT_RF_MODULE&dut_serial=IND_RE_5.1&template_id=KEYSIGHT_TEK_SUITE`, {
             method: "POST"
         });
-    } catch(e) {
+    } catch {
         setBusLogs(prev => [...prev, {
             timestamp: new Date().toLocaleTimeString(),
             step: "COMMUNICATION_FAULT",
@@ -164,11 +158,11 @@ export const TestRunnerPage: React.FC = () => {
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-8 border-b border-[#1E293B] pb-8">
         <div className="flex items-center gap-6">
           <div className={`p-5 rounded-3xl shadow-[0_0_50px_rgba(30,111,217,0.15)] border border-accent-blue/30 transition-all ${isRunning ? 'bg-accent-blue/10 text-accent-blue animate-pulse' : 'bg-[#131B2C] text-text-tertiary hover:scale-105'}`}>
-            <Pulse weight="duotone" size={42} />
+            <Broadcast weight="duotone" size={42} />
           </div>
           <div>
-            <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">Standard Commands for Programmable Instruments (SCPI) Interface</h1>
-            <p className="text-[10px] text-text-tertiary font-black tracking-widest uppercase opacity-70">Vector Network Analyzer (VNA) Orchestration Environment · V5.1 (Industrial)</p>
+            <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">RF Measurement & Orchestration Control</h1>
+            <p className="text-[10px] text-text-tertiary font-black tracking-widest uppercase opacity-70">Integrated Hardware-in-the-Loop Environment · V5.1 (Industrial)</p>
           </div>
         </div>
         
@@ -178,8 +172,8 @@ export const TestRunnerPage: React.FC = () => {
                 onClick={() => setIsSplitView(!isSplitView)}
                 className={`flex items-center gap-3 px-6 py-3 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all ${isSplitView ? 'bg-accent-blue text-white shadow-lg' : 'text-text-tertiary hover:text-white'}`}
               >
-                <Selection size={16} />
-                Dual Trace View
+                <Layout size={16} />
+                Instrumentation Split-View
               </button>
               <button 
                 onClick={() => setShowGolden(!showGolden)}
@@ -216,15 +210,15 @@ export const TestRunnerPage: React.FC = () => {
             <div className="flex items-center justify-between mb-10 relative z-10">
               <div className="flex items-center gap-4">
                 <h3 className="text-sm font-black text-white uppercase tracking-[0.4em] flex items-center gap-4">
-                   <ChartBar className="text-accent-blue" weight="duotone" size={24} />
-                   {isSplitView ? "Synchronized Dual-Channel Scattering Data" : "Primary Scattering Parameter Trace (S11)"}
+                   <Waveform className="text-accent-blue" weight="duotone" size={24} />
+                   {isSplitView ? "Concurrent Signal Gen & Spectrum Analysis" : "Primary Signal Capture Trace"}
                 </h3>
               </div>
             </div>
             
             <div className={`flex-1 flex gap-10 relative z-10 ${isSplitView ? 'flex-row' : 'flex-col'}`}>
               <div className="flex-1 w-full relative group">
-                <div className="absolute top-6 left-8 text-[11px] font-black uppercase text-accent-blue opacity-60 z-20 font-mono tracking-widest bg-black/60 px-4 py-1.5 rounded-lg border border-accent-blue/30 backdrop-blur-md">INSTR_CHN_01::VNA::S11_PARAMETER</div>
+                <div className="absolute top-6 left-8 text-[11px] font-black uppercase text-accent-blue opacity-60 z-20 font-mono tracking-widest bg-black/60 px-4 py-1.5 rounded-lg border border-accent-blue/30 backdrop-blur-md">INSTR::SIG_GEN::RF_OUT</div>
                 <div className="w-full h-[400px] lg:h-[500px] bg-black/40 rounded-[2.5rem] p-6 border border-white/5 shadow-inner">
                   <UPlotChart 
                     data={traceData} 
@@ -237,7 +231,7 @@ export const TestRunnerPage: React.FC = () => {
 
               {isSplitView && (
                 <div className="flex-1 w-full relative border-l border-[#1E293B] pl-10 animate-in slide-in-from-right duration-700">
-                  <div className="absolute top-6 left-12 text-[11px] font-black uppercase text-status-pass opacity-60 z-20 font-mono tracking-widest bg-black/60 px-4 py-1.5 rounded-lg border border-status-pass/30 backdrop-blur-md">INSTR_CHN_02::VNA::S21_PARAMETER</div>
+                  <div className="absolute top-6 left-12 text-[11px] font-black uppercase text-status-pass opacity-60 z-20 font-mono tracking-widest bg-black/60 px-4 py-1.5 rounded-lg border border-status-pass/30 backdrop-blur-md">INSTR::SPEC_AN::SIGNAL_ANALYSIS</div>
                   <div className="w-full h-[400px] bg-black/40 rounded-[2.5rem] p-6 border border-white/5 shadow-inner">
                      <UPlotChart 
                        data={secondaryTraceData} 
@@ -247,7 +241,6 @@ export const TestRunnerPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Peak Measurement Overlay */}
               <div className="absolute top-24 left-12 flex flex-col gap-6 pointer-events-none z-20">
                  {peak && (
                    <motion.div 
@@ -270,7 +263,6 @@ export const TestRunnerPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Measurement Status HUD Footer */}
             <div className="mt-12 grid grid-cols-2 lg:grid-cols-4 gap-10 pt-10 border-t border-[#1E293B] relative z-10">
                <div className="space-y-3">
                   <span className="text-text-tertiary text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Instrumentation Bus Status</span>
@@ -282,22 +274,22 @@ export const TestRunnerPage: React.FC = () => {
                <div className="space-y-3 border-l border-[#1E293B] pl-10">
                   <span className="text-text-tertiary text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Measurement Integration Status</span>
                   <div className="flex items-center gap-4">
-                     <Flask className="text-status-pass" size={24} weight="duotone" />
+                     <Cpu className="text-status-pass" size={24} weight="duotone" />
                      <span className="text-white font-black text-md tracking-tighter">BIT_NOMINAL_LOCK</span>
                   </div>
                </div>
                <div className="space-y-3 border-l border-[#1E293B] pl-10">
                   <span className="text-text-tertiary text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Sequence Engine Logic</span>
                   <div className="flex items-center gap-4 text-accent-blue">
-                     <MagicWand size={24} weight="duotone" />
-                     <span className="text-white font-black text-md tracking-tighter uppercase">V5.1_STANDARD</span>
+                     <Scan size={24} weight="duotone" />
+                     <span className="text-white font-black text-md tracking-tighter uppercase">HIL_AUTO_DISCOVERY</span>
                   </div>
                </div>
                <div className="space-y-3 border-l border-[#1E293B] pl-10">
-                  <span className="text-text-tertiary text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Remote Interface Identifier</span>
+                  <span className="text-text-tertiary text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Instrumentation Gateway</span>
                   <div className="flex items-center gap-4">
-                     <HardDrive className="text-text-tertiary opacity-40" size={24} weight="duotone" />
-                     <span className="text-white font-black text-md tracking-tighter">TCPIP::VNA_UNIT::142</span>
+                     <TerminalWindow className="text-text-tertiary opacity-40" size={24} weight="duotone" />
+                     <span className="text-white font-black text-md tracking-tighter">VISA_GPIB_IP_LINK</span>
                   </div>
                </div>
             </div>
@@ -307,12 +299,12 @@ export const TestRunnerPage: React.FC = () => {
         <div className="space-y-8">
           <div className="p-10 bg-[#0B0F19] border border-[#1E293B] h-[350px] flex flex-col rounded-[2.5rem] relative overflow-hidden shadow-2xl">
              <div className="absolute -right-20 -bottom-20 opacity-5 text-accent-blue -rotate-12 blur-[4px]">
-                <MagicWand size={250} weight="fill" />
+                <Waveform size={250} weight="fill" />
              </div>
              <div className="flex items-center justify-between mb-8 relative z-10">
                 <h4 className="text-[11px] font-black text-white uppercase tracking-[0.4em] flex items-center gap-4">
-                   <MagicWand weight="fill" className="text-accent-blue" />
-                   Automated Signal Analysis
+                   <Scan weight="fill" className="text-accent-blue" />
+                   Real-Time Spectral Analysis
                 </h4>
              </div>
              
@@ -354,8 +346,8 @@ export const TestRunnerPage: React.FC = () => {
           <div className="p-10 bg-[#0B0F19] border border-[#1E293B] flex-1 min-h-[420px] rounded-[2.5rem] flex flex-col shadow-2xl relative overflow-hidden">
              <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent pointer-events-none opacity-40" />
              <h3 className="text-[11px] font-black text-white uppercase tracking-[0.4em] mb-10 flex items-center gap-4">
-                <Selection size={20} className="text-accent-blue" weight="duotone" />
-                Measurement Sequence Progress
+                <Layout size={20} className="text-accent-blue" weight="duotone" />
+                Hardware Test Sequence Progress
              </h3>
              <div className="space-y-5 relative z-10">
                 {steps.map((step, idx) => (

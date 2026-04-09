@@ -1,13 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Pulse, ShieldCheck, Cpu, HardDrive, Waveform, Compass, List, Flask, MagicWand, Selection } from '@phosphor-icons/react';
+import { Pulse, ShieldCheck, Cpu, HardDrive, Compass, List, Flask, MagicWand, Selection } from '@phosphor-icons/react';
 import { GlassCard } from '../components/ui/GlassCard';
-import { GvbLogo } from '../components/ui/Logo';
 import { HardwareChecklist } from '../components/ui/HardwareChecklist';
 import { useSystemState } from '../context/SystemStateContext';
-
-const SparkWave: React.FC<{ weight: string; size: number; className?: string }> = ({ weight, size, className }) => (
-  <Waveform weight={weight as "duotone" | "bold" | "fill" | "light" | "regular" | "thin"} size={size} className={className} />
-);
 
 export const DashboardPage: React.FC = () => {
   const [backendStatus, setBackendStatus] = useState<string>("Connecting...");
@@ -64,8 +59,8 @@ export const DashboardPage: React.FC = () => {
           </button>
           
           <div className="hidden lg:flex items-center gap-3 px-6 py-4 bg-[#0B0F19] border border-[#1E293B] rounded-xl shadow-inner">
-             <div className="w-2.5 h-2.5 rounded-full bg-status-pass animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
-             <span className="text-[10px] font-black text-white uppercase tracking-widest">Bus Connectivity: STABLE</span>
+             <div className={`w-2.5 h-2.5 rounded-full ${backendStatus.includes('Offline') ? 'bg-status-fail' : 'bg-status-pass'} animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]`} />
+             <span className="text-[10px] font-black text-white uppercase tracking-widest">Bus Status: {backendStatus}</span>
           </div>
         </div>
       </header>
@@ -78,7 +73,7 @@ export const DashboardPage: React.FC = () => {
             </div>
             <div className="flex items-center gap-4 mb-4">
               <div className={`p-3 bg-white/5 rounded-2xl ${stat.color} border border-white/5 shadow-inner`}>
-                {React.cloneElement(stat.icon as React.ReactElement, { size: 24, weight: "duotone" })}
+                {React.cloneElement(stat.icon as React.ReactElement<any>, { size: 24, weight: "duotone" })}
               </div>
               <span className="text-[9px] font-black text-[#64748B] uppercase tracking-[0.2em]">{stat.label}</span>
             </div>

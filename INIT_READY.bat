@@ -1,33 +1,78 @@
 @echo off
+setlocal enabledelayedexpansion
+
 echo ===================================================
 echo     GVB Tech RangeReady - ATE Initialization
 echo ===================================================
 echo.
 
-:: Initialize Python Virtual Environment
-echo [1/4] Setting up Python Environment...
+:: 1. Prerequisite Check
+echo [1/5] Checking System Prerequisites...
+where python >nul 2>nul
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] Python is not installed or not in PATH.
+    pause
+    exit /b 1
+)
+
+where npm >nul 2>nul
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] Node.js/NPM is not installed or not in PATH.
+    pause
+    exit /b 1
+)
+echo      [OK] Prerequisites found.
+
+:: 2. Python Environment
+echo [2/5] Setting up Python Environment...
 if not exist ".venv" (
+    echo      > Creating virtual environment...
     python -m venv .venv
-    echo Created virtual environment '.venv'
 )
 call .venv\Scripts\activate.bat
-echo Installing backend dependencies...
-pip install -r backend\requirements.txt > nul 2>&1
 
-:: Initialize Node Environment
-echo [2/4] Setting up Frontend Environment...
+echo      > Installing/Updating Backend Dependencies...
+pip install --upgrade pip > nul
+pip install -r backend\requirements.txt
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] Failed to install Python dependencies.
+    pause
+    exit /b 1
+)
+
+:: 3. Frontend Environment
+echo [3/5] Setting up Frontend Environment...
+:: Fix for Electron download issues
+set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+set ELECTRON_CUSTOM_DIR={{version}}
+
+echo      > Running npm install (this may take a moment)...
 if not exist "node_modules" (
-    npm install
+    call npm install
+) else (
+    echo      [SKIP] node_modules already exists.
 )
 
-:: Validate Hardware Config
-echo [3/4] Validating Configuration Matrix...
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] npm install failed.
+    pause
+    exit /b 1
+)
+
+:: 4. Hardware Matrix
+echo [4/5] Validating Configuration Matrix...
 if not exist "backend\config.json" (
-    echo { "Signal Generator": "192.168.1.141", "Spectrum Analyzer": "192.168.1.142" } > backend\config.json
+    echo { "Signal Generator": "AUTO", "Spectrum Analyzer": "AUTO", "Discovery": true } > backend\config.json
+    echo      [NEW] Config initialized with Auto-Discovery.
 )
 
-:: Ignite Dashboard
-echo [4/4] Starting Global Control Hub...
+:: 5. Launch
+echo [5/5] Starting Global Control Hub...
 python start.py
 
-pause
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] System failed to start.
+    pause
+)
+
+endlocal

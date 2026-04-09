@@ -32,3 +32,8 @@ Thumbs.db
 electron/release/
 electron/dist/
 frontend/docs/
+backend/build/
+backend/dist/
+tools/
+dist/
+release/

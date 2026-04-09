@@ -2,17 +2,26 @@ import socket
 import concurrent.futures
 from typing import List, Dict, Any
 import asyncio
-from .visa_service import visa_service
-from .config_service import config_service
-from .broadcast import manager
+from services.visa_service import visa_service
+from services.config_service import config_service
+from services.broadcast import manager
 from drivers.manifest_loader import ManifestLoader
 
 class DiscoveryService:
     """
     Scans network subnets for valid VISA instruments.
     """
-    def __init__(self, subnet: str = "192.168.1."):
-        self.subnet = subnet
+    def __init__(self, subnet: str = None):
+        if subnet is None:
+            # Detect local IP and set subnet
+            try:
+                hostname = socket.gethostname()
+                local_ip = socket.gethostbyname(hostname)
+                self.subnet = ".".join(local_ip.split(".")[:-1]) + "."
+            except:
+                self.subnet = "192.168.1."
+        else:
+            self.subnet = subnet
 
     async def broadcast_status(self, message: str, level: str = "INFO"):
         await manager.broadcast({
@@ -26,7 +35,7 @@ class DiscoveryService:
         Scans a given subnet on standard VISA port (5025).
         Returns a list of discovered and identified instruments.
         """
-        scan_msg = f"Scanning subnet {self.subnet}x on port 5025..."
+        scan_msg = f"Scanning subnet {self.subnet}x for instruments..."
         print(scan_msg)
         await self.broadcast_status(scan_msg)
         
@@ -77,26 +86,31 @@ class DiscoveryService:
                 idn = visa_service.identify(ip)
                 if idn:
                     await self.broadcast_status(f"Success! Identified {ip} as: {idn}", level="SUCCESS")
+                    # Auto-assign roles based on manifests
                     manifest = ManifestLoader.match_idn_string(idn)
-                    
-                    # Auto-assign roles based on common signatures
-                    idn_upper = idn.upper()
                     role = "Unknown"
-                    if "TEKTRONIX" in idn_upper or "RSA" in idn_upper:
-                        role = "Spectrum Analyzer"
+                    if manifest:
+                        role = manifest.instrument_class
                         config_service.set_instrument_ip(role, ip)
                         await self.broadcast_status(f"Auto-mapped {ip} to role: {role}", level="SUCCESS")
-                    elif "KEYSIGHT" in idn_upper or "AGILENT" in idn_upper or "N90" in idn_upper:
-                        role = "Signal Generator"
-                        config_service.set_instrument_ip(role, ip)
-                        await self.broadcast_status(f"Auto-mapped {ip} to role: {role}", level="SUCCESS")
+                    else:
+                        # Fallback simple matching
+                        idn_upper = idn.upper()
+                        if "ROHDE" in idn_upper or "R&S" in idn_upper:
+                            role = "Spectrum Analyzer"
+                        elif "KEYSIGHT" in idn_upper or "AGILENT" in idn_upper:
+                            role = "Signal Generator"
+                        
+                        if role != "Unknown":
+                            config_service.set_instrument_ip(role, ip)
+                            await self.broadcast_status(f"Fallback matched {ip} to role: {role}", level="SUCCESS")
 
                     discovered.append({
                         "ip": ip,
                         "idn": idn,
                         "role": role,
                         "manifest_id": manifest.id if manifest else "Unknown",
-                        "model": manifest.instrument_class if manifest else "Unknown",
+                        "model": manifest.instrument_class if manifest else role,
                         "manufacturer": manifest.manufacturer if manifest else "Unknown"
                     })
                 else:

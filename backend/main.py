@@ -27,10 +27,20 @@ async def lifespan(app: FastAPI):
     # Startup: Initialize the database
     print("GVB Tech Backend: Initializing V5.0 SQLite...")
     init_db()
-    # Re-load driver plugins on startup
+    # 2. Discovers and loads hardware driver plugins via the PluginManager.
     PluginManager.load_plugins()
-    # Ensure models directory exists
+    # 3. Ensure models directory exists
     os.makedirs("./models", exist_ok=True)
+    
+    # 4. Trigger Auto-Discovery if enabled
+    from services.config_service import config_service
+    from services.discovery_service import discovery_service
+    all_config = config_service.get_all_instruments()
+    if all_config.get("Discovery", True): # Default to True for new one-click experience
+        print("GVB Tech Discovery: Initiating background hardware scan...")
+        # Save reference to prevent garbage collection
+        app.state.discovery_task = asyncio.create_task(discovery_service.scan_network())
+    
     yield
     # Shutdown: Clean up connections
     print("GVB Tech Backend Shutting Down...")

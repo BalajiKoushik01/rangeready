@@ -6,14 +6,47 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\" \"npm run dev:electron\"",
     "dev:frontend": "cd frontend && npm run dev",
-    "dev:backend": "cd backend && venv\\Scripts\\activate && python main.py",
-    "dev:electron": "wait-on http://localhost:5173 && electron .",
+    "dev:backend": "cd backend && ..\\.venv\\Scripts\\activate && python main.py",
+    "dev:electron": "wait-on http://localhost:8787/health && electron .",
     "install:all": "npm install && cd frontend && npm install && cd .. && npm run venv",
-    "venv": "python -m venv backend/venv && backend\\Scripts\\activate && pip install -r backend/requirements.txt"
+    "venv": "python -m venv .venv && .venv\\Scripts\\activate && pip install -r backend/requirements.txt"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
     "electron": "^28.2.0",
+    "electron-builder": "^24.13.3",
     "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.gvbtech.rangeready",
+    "productName": "RangeReady",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "frontend/dist/**/*",
+      "backend/**/*",
+      "!backend/build/**/*",
+      "!backend/dist/**/*",
+      "!**/*.log",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "tools/portable_python",
+        "to": "python_portable",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": "portable"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Development"
+    }
   }
 }

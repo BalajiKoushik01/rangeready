@@ -36,13 +36,27 @@ function createWindow() {
 }
 
 function startBackend() {
-  const pythonExecutable = process.platform === 'win32' 
-    ? path.join(__dirname, '../backend/venv/Scripts/python.exe')
-    : path.join(__dirname, '../backend/venv/bin/python');
+  const isPackaged = app.isPackaged;
+  let pythonExecutable;
+  let scriptPath;
+  let args;
 
-  const scriptPath = path.join(__dirname, '../backend/main.py');
+  if (isPackaged) {
+    // In production, the backend uses the bundled portable Python
+    pythonExecutable = path.join(process.resourcesPath, 'python_portable', 'python.exe');
+    scriptPath = path.join(process.resourcesPath, 'app', 'backend', 'main.py');
+    args = [scriptPath, '--port', '8787'];
+  } else {
+    // In development, use the virtual environment
+    pythonExecutable = process.platform === 'win32' 
+      ? path.join(__dirname, '../.venv/Scripts/python.exe')
+      : path.join(__dirname, '../.venv/bin/python');
+    scriptPath = path.join(__dirname, '../backend/main.py');
+    args = [scriptPath, '--port', '8787'];
+  }
 
-  backendProcess = spawn(pythonExecutable, [scriptPath, '--port', '8787']);
+  console.log(`Launching Backend from: ${pythonExecutable}`);
+  backendProcess = spawn(pythonExecutable, args);
 
   backendProcess.stdout.on('data', (data) => {
     console.log(`Backend: ${data}`);

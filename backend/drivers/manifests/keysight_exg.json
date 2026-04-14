@@ -3,6 +3,10 @@
     "manufacturer": "Keysight Technologies",
     "model_regex": "N5171B|N5172B|N5181B|N5182B|EXG",
     "instrument_class": "Signal Generator",
+    "discovery_probes": {
+        "query_mode": "SOUR:FREQ:MODE?",
+        "expected_mode": "CW"
+    },
     "capability_flags": {
         "vxi11": true,
         "scpi": true,

@@ -1,3 +1,10 @@
+"""
+FILE: database.py
+ROLE: Persistence Layer (SQLite / SQLAlchemy).
+TRIGGERS: Backend startup (main.py), CRUD routers (instruments.py).
+TARGETS: backend/rangeready.db
+DESCRIPTION: Manages the database engine and session factory for all instrumentation and test data.
+"""
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -9,7 +16,7 @@ DB_PATH = "sqlite:///./rangeready.db"
 engine = create_engine(DB_PATH, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-from database_base import Base
+from .database_base import Base
 
 def init_db():
     """
@@ -17,37 +24,16 @@ def init_db():
     
     Creates all tables and seeds default hardware if empty.
     """
-    from models.test_session import TestSession, TestStep
-    from models.instrument import Instrument, InstrumentCalibration
+    from .models.test_session import TestSession, TestStep
+    from .models.instrument import Instrument, InstrumentCalibration
     Base.metadata.create_all(bind=engine)
     
-    # Auto-seeding for first-run experience
+    # Auto-seeding for first-run experience (Purged for Industrial Deployment)
     db = SessionLocal()
     try:
+        # We start with an empty registry; hardware must be discovered via Ethernet.
         if db.query(Instrument).count() == 0:
-            print("INFO: Initializing hardware registry with default units...")
-            default_units = [
-                Instrument(
-                    name="Siglent SSA Native", 
-                    model="SSA3032X", 
-                    serial_number="SSA3X-A123-009", 
-                    address="192.168.1.142", 
-                    connection_type="TCPIP",
-                    driver_id="siglent_ssa",
-                    is_active=True
-                ),
-                Instrument(
-                    name="Dummy SA Simulator", 
-                    model="DUMMY-V1", 
-                    serial_number="SIM-000", 
-                    address="TCPIP::127.0.0.1::INSTR", 
-                    connection_type="TCPIP",
-                    driver_id="dummy_sa",
-                    is_active=True
-                )
-            ]
-            db.add_all(default_units)
-            db.commit()
+            print("INFO: Database initialized. Discovery service scanning for Keysight/R&S units...")
     finally:
         db.close()
 

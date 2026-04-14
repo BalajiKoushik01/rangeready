@@ -1,4 +1,11 @@
 import importlib
+"""
+FILE: drivers/plugin_manager.py
+ROLE: Dynamic Hardware Driver Orchestrator.
+TRIGGERS: All command routers (commands.py) and StatusPoller.
+TARGETS: All driver files in backend/drivers/.
+DESCRIPTION: Implements a Registry/Factory pattern to hot-load and serve instrument drivers based on model strings.
+"""
 import os
 import inspect
 from typing import Dict, Type
@@ -17,11 +24,13 @@ class PluginManager:
     def load_plugins(cls):
         """Discovers all .py files in drivers/ and registers classes inheriting from BaseInstrumentDriver."""
         drivers_path = os.path.dirname(__file__)
+        package_name = __name__.rsplit('.', 1)[0]
+        
         for filename in os.listdir(drivers_path):
             if filename.endswith(".py") and filename not in ["__init__.py", "base_driver.py", "plugin_manager.py", "manifest_loader.py"]:
-                module_name = f"drivers.{filename[:-3]}"
+                module_name = f".{filename[:-3]}"
                 try:
-                    module = importlib.import_module(module_name)
+                    module = importlib.import_module(module_name, package=package_name)
                     # Register classes
                     for name, obj in inspect.getmembers(module):
                         if inspect.isclass(obj) and issubclass(obj, BaseInstrumentDriver) and obj is not BaseInstrumentDriver:
@@ -31,10 +40,10 @@ class PluginManager:
                     print(f"ERROR: Failed to load driver {filename}: {e}")
 
     @classmethod
-    def get_driver(cls, name: str) -> BaseInstrumentDriver:
-        """Instantiates a requested driver by name."""
+    def get_driver(cls, name: str, simulation: bool = False) -> BaseInstrumentDriver:
+        """Instantiates a requested driver by name with optional simulation mode."""
         if name in cls._drivers:
-            return cls._drivers[name]()
+            return cls._drivers[name](simulation=simulation)
         raise ValueError(f"Driver '{name}' not found in registry.")
 
     @classmethod

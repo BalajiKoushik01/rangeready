@@ -10,7 +10,7 @@ import os
 import io
 import datetime
 from sqlalchemy.orm import Session
-from models.test_session import TestSession, TestStep
+from ..models.test_session import TestSession, TestStep
 import matplotlib.pyplot as plt
 
 class ReportGenerator:

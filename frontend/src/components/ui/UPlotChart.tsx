@@ -107,7 +107,8 @@ export const UPlotChart: React.FC<UPlotChartProps> = ({
                  uplotInst.current.setData(chartData as uPlot.AlignedData);
             }
         }
-    }, [data, showGolden, goldenData]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [width, height, data, goldenData, showGolden]);
 
     return <div ref={chartRef} className="w-full h-full overflow-hidden" />;
 };

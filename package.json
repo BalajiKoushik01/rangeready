@@ -42,7 +42,19 @@
       }
     ],
     "win": {
-      "target": "portable"
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "forceCodeSigning": false
+    },
+    "portable": {
+      "requestExecutionLevel": "user",
+      "artifactName": "RangeReady_Portable_${version}.${ext}"
     },
     "linux": {
       "target": "AppImage",

@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from database import get_db
-from models.test_session import TestSession
-from services.report_generator import ReportGenerator
+from ..database import get_db
+from ..models.test_session import TestSession
+from ..services.report_generator import ReportGenerator
 import os
 import tempfile
 

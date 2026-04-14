@@ -1,0 +1,29 @@
+{
+    "id": "rs_fsv_general",
+    "manufacturer": "Rohde & Schwarz",
+    "model_regex": "FSV|FSVR|FSW|FPS",
+    "instrument_class": "Spectrum Analyzer",
+    "discovery_probes": {
+        "query_mode": "INST:SEL?",
+        "expected_mode": "SAN"
+    },
+    "capability_flags": {
+        "scpi": true,
+        "vxi11": true,
+        "iq_streaming": true
+    },
+    "commands": {
+        "reset": "*RST",
+        "set_center_freq": "SENS:FREQ:CENT {value}",
+        "set_span": "SENS:FREQ:SPAN {value}",
+        "set_rbw": "SENS:BAND:RES {value}",
+        "set_vbw": "SENS:BAND:VID {value}",
+        "rf_on": "OUTP ON",
+        "rf_off": "OUTP OFF",
+        "query_trace": "TRAC:DATA? TRACE1"
+    },
+    "safe_limits": {
+        "max_freq": 13600000000,
+        "min_freq": 10
+    }
+}

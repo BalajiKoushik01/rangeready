@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Plus, 
   Trash, 
@@ -31,8 +31,8 @@ export const TemplatesPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const fetchTemplates = () => {
-    setLoading(true);
+  const fetchTemplates = useCallback((showLoading = true) => {
+    if (showLoading) setLoading(true);
     fetch("http://127.0.0.1:8787/api/templates/")
       .then(res => res.json())
       .then(data => {
@@ -40,11 +40,11 @@ export const TemplatesPage: React.FC = () => {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  };
+  }, []);
 
   useEffect(() => {
-    fetchTemplates();
-  }, []);
+    fetchTemplates(false); // Already loading by default
+  }, [fetchTemplates]);
 
   const deleteTemplate = (id: number) => {
     if (window.confirm("Are you sure you want to delete this blueprint?")) {

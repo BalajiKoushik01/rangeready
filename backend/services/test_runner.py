@@ -1,8 +1,8 @@
 import asyncio
 import numpy as np
 from sqlalchemy.orm import Session
-from models.test_session import TestSession, TestStep
-from services.analysis_engine import RFAnalysisEngine
+from ..models.test_session import TestSession, TestStep
+from .analysis_engine import RFAnalysisEngine
 import json
 from typing import Tuple, List, Dict, Any, Optional
 
@@ -42,13 +42,29 @@ class TestRunner:
                     "step_name": step.name
                 })
 
-            # 2. Simulate/Fetch Trace Data (Mocking for now)
-            # In a real system, this would call SiglentSA.fetch_sweep_result()
-            freqs, amplitudes = self._generate_mock_data(step)
+            # 2. Fetch REAL Trace Data from Hardware (Keysight/R&S)
+            # Find the active instrument for the role (e.g. Spectrum Analyzer)
+            from .status_poller import status_poller
+            drv = status_poller._cached_drivers.get("Spectrum Analyzer")
+            
+            if drv and drv.is_connected:
+                print(f"Acquiring real spectral data from {drv.idn}...")
+                trace_data = drv.get_trace() # Returns list of {"freq": f, "amp": a}
+                freqs = np.array([pt["freq"] * 1e9 for pt in trace_data]) # Convert back to Hz for analysis
+                amplitudes = np.array([pt["amp"] for pt in trace_data])
+            else:
+                print("WARNING: No real hardware detected. Reporting Connection Failure.")
+                # Return empty/zero arrays to indicate no data
+                freqs = np.zeros(step.points)
+                amplitudes = np.full(step.points, -120.0) # Noise floor
+                is_pass = False
             
             # 3. Analyze results
             metrics = self.engine.extract_metrics(freqs, amplitudes, step.measurement_type)
-            is_pass = self.engine.pass_fail_check(amplitudes, step.upper_limit, step.lower_limit)
+            if drv and drv.is_connected:
+                is_pass = self.engine.pass_fail_check(amplitudes, step.upper_limit, step.lower_limit)
+            else:
+                is_pass = False # Hardware missing is an automatic failure in Industrial mode
             
             if not is_pass:
                 overall_pass = False
@@ -89,34 +105,3 @@ class TestRunner:
                 "overall_result": session.overall_result
             })
 
-    def _generate_mock_data(self, step: TestStep) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Generates realistic RF traces for demonstration.
-        """
-        freqs = np.linspace(step.start_freq_hz, step.stop_freq_hz, step.points)
-        
-        if step.measurement_type.upper() in ["S11", "VSWR", "RETURN_LOSS"]:
-            # Lorentzian dip for antenna match + noise floor
-            f_center = (step.start_freq_hz + step.stop_freq_hz) / 2
-            span = step.stop_freq_hz - step.start_freq_hz
-            q = 10.0 # Quality factor
-            
-            dip = -15.0 / (1 + (2 * q * (freqs - f_center) / f_center)**2)
-            noise = np.random.normal(-35, 1, step.points)
-            # Combine
-            amps = -10 + dip + (noise / 10)
-            
-        elif step.measurement_type.upper() in ["S21", "GAIN", "INSERTION_LOSS"]:
-            # Flat response with some ripple + bandwidth rolloff
-            f_center = (step.start_freq_hz + step.stop_freq_hz) / 2
-            span = step.stop_freq_hz - step.start_freq_hz
-            
-            # Bandpass-ish roll-off
-            rolloff = -3.0 * ((freqs - f_center) / (span/2))**4
-            ripple = 0.5 * np.sin(2 * np.pi * 5 * (freqs - step.start_freq_hz) / span)
-            amps = rolloff + ripple - 1.0 # -1dB nominal loss
-            
-        else:
-            amps = np.random.normal(-20, 2, step.points)
-            
-        return freqs, amps

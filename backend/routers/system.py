@@ -1,23 +1,37 @@
+"""
+FILE: routers/system.py
+ROLE: Global System Configuration API.
+TRIGGERS: GUI [SettingsPage], [InstrumentRegistryPage] Discovery Toggle.
+TARGETS: backend/services/config_service.py and backend/services/discovery_service.py.
+DESCRIPTION: Manages application-wide states like auto-discovery, blacklists, and simulation mode.
+"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from database import get_db, engine
-from models.test_session import TestSession, TestStep, TestTemplate, TemplateStep, LimitMask
-from models.instrument import Instrument, InstrumentCalibration
+from ..database import get_db, engine
+from ..models.test_session import TestSession, TestStep, TestTemplate, TemplateStep, LimitMask
+from ..models.instrument import Instrument, InstrumentCalibration
 from typing import Annotated
 import os
 import shutil
 from pydantic import BaseModel
-from services.config_service import config_service
-from services.discovery_service import discovery_service
-from services.visa_service import visa_service
+from ..services.config_service import config_service
+from ..drivers.plugin_manager import PluginManager
+from ..services.discovery_service import discovery_service
 import asyncio
 
 class ConfigUpdate(BaseModel):
     role: str
     ip: str
 
-router = APIRouter()
+class DiscoverySettings(BaseModel):
+    active: bool = None
+    stop_after_one: bool = None
+
+class BlacklistUpdate(BaseModel):
+    ip: str
+
+router = APIRouter(prefix="/api/system", tags=["System Configuration"])
 
 @router.post("/reset", responses={500: {"description": "System reset failed"}})
 def reset_system(db: Annotated[Session, Depends(get_db)]):
@@ -60,21 +74,50 @@ def update_config(update: ConfigUpdate):
     config_service.set_instrument_ip(update.role, update.ip)
     return {"status": "success", "config": config_service.get_all_instruments()}
 
-@router.post("/test_connection")
+@router.post("/test_connection", responses={400: {"description": "Instrument unreachable"}})
 def test_connection(update: ConfigUpdate):
-    """Tests the connection to an instrument by IP and role."""
-    if visa_service.connect(update.ip):
-        idn = visa_service.identify(update.ip)
-        visa_service.disconnect(update.ip)
-        if idn:
-            return {"status": "success", "idn": idn}
-    raise HTTPException(status_code=400, detail="Handshake failed or instrument unresponsive.")
+    # Select a generic driver for connection ping
+    driver = PluginManager.get_driver("KeysightUniversalDriver", simulation=config_service.is_simulation_mode())
+    if driver.connect(update.ip):
+        idn = driver.query("*IDN?")
+        driver.disconnect()
+        return {"status": "success", "idn": idn}
+    else:
+        raise HTTPException(status_code=400, detail="Could not reach instrument at this IP.")
 
 @router.post("/discover")
 async def trigger_discovery():
     """Triggers an asynchronous subnet scan and identification."""
-    # Run scanning in the background to not block HTTP request immediately
-    # The scan broadcasts its results via web sockets
     asyncio.create_task(discovery_service.scan_network())
     return {"status": "scanning", "message": "Discovery sequence initiated."}
 
+@router.get("/status")
+def get_status():
+    """Returns general system status for legacy dashboard components."""
+    return {
+        "status": "online",
+        "branding": "GVB Tech",
+        "engine": "V5.1 Industrial",
+        "simulation": config_service.is_simulation_mode(),
+        "discovery_active": config_service._config.get("discovery_active", True)
+    }
+
+@router.post("/discovery/settings")
+def update_discovery_settings(settings: DiscoverySettings):
+    """Updates global discovery behavioral settings."""
+    if settings.active is not None:
+        config_service.set_discovery_status(settings.active)
+    if settings.stop_after_one is not None:
+        config_service.set_discovery_mode(settings.stop_after_one)
+    return {"status": "success", "config": config_service.get_all_instruments()}
+
+@router.get("/blacklist")
+def get_blacklist():
+    """Returns the current list of ignored/blacklisted IPs."""
+    return {"blacklist": config_service.get_blacklist()}
+
+@router.post("/blacklist")
+def add_to_blacklist(update: BlacklistUpdate):
+    """Adds an IP to the ignore list to prevent future scanning."""
+    config_service.add_to_blacklist(update.ip)
+    return {"status": "success", "blacklist": config_service.get_blacklist()}

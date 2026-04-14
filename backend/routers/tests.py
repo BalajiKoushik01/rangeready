@@ -1,19 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from sqlalchemy.orm import Session
-from database import get_db
-from models.test_session import TestSession, TestStep, TestTemplate
-from services.test_runner import TestRunner
-from services.broadcast import manager
-from services.sequence_engine import SequenceEngine
-from services.config_service import config_service
-from typing import List
+from typing import List, Annotated
 import datetime
 import asyncio
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from sqlalchemy.orm import Session
+from backend.database import get_db
+from backend.models.test_session import TestSession, TestStep, TestTemplate
+from backend.services.broadcast import manager
+from backend.services.sequence_engine import SequenceEngine
+from backend.services.config_service import config_service
 
-router = APIRouter()
+router = APIRouter(prefix="/api/tests", tags=["Test Execution"])
 
-@router.post("/run")
-async def run_test(dut_name: str, dut_serial: str, template_id: str, db: Session = Depends(get_db)):
+@router.post("/run", responses={404: {"description": "Test template not found"}})
+async def run_test(dut_name: str, dut_serial: str, template_id: str, db: Annotated[Session, Depends(get_db)]):
     """
     Initiates an automated test session.
     
@@ -22,12 +21,6 @@ async def run_test(dut_name: str, dut_serial: str, template_id: str, db: Session
     2. Resolves test steps from a template or hardcoded fallback.
     3. Triggers the SequenceEngine in a background task to perform actual hardware
        orchestration and telemetry broadcasting.
-    
-    Args:
-        dut_name: Name of the Device Under Test.
-        dut_serial: Serial number for reporting.
-        template_id: ID or Name of the test template to follow.
-        db: Database session injection.
     """
     # 1. Create a new test session record
     session = TestSession(
@@ -44,6 +37,7 @@ async def run_test(dut_name: str, dut_serial: str, template_id: str, db: Session
     db_template = db.query(TestTemplate).filter(TestTemplate.id == template_id).first() if template_id.isdigit() else \
                   db.query(TestTemplate).filter(TestTemplate.name == template_id).first()
     
+    steps = []
     if db_template:
         # Clone template steps into session-specific steps
         steps = [
@@ -61,7 +55,7 @@ async def run_test(dut_name: str, dut_serial: str, template_id: str, db: Session
         ]
         db.add_all(steps)
         db.commit()
-    elif template_id == "TTC_ANT_L" or template_id == "INDUSTRIAL_SUITE" or template_id == "KEYSIGHT_TEK_SUITE":
+    elif template_id in ["TTC_ANT_L", "INDUSTRIAL_SUITE", "KEYSIGHT_TEK_SUITE"]:
         # Comprehensive fallback for real-world hardware testing preparation (Keysight/Tektronix Suite)
         steps = [
             # Signal Generator Setup
@@ -114,8 +108,8 @@ async def run_test(dut_name: str, dut_serial: str, template_id: str, db: Session
 
     return {"status": "started", "session_id": session.id}
 
-@router.delete("/{session_id}")
-async def delete_session(session_id: int, db: Session = Depends(get_db)):
+@router.delete("/{session_id}", responses={404: {"description": "Session not found"}})
+async def delete_session(session_id: int, db: Annotated[Session, Depends(get_db)]):
     """Deletes a specific test session and its historical results."""
     session = db.query(TestSession).filter(TestSession.id == session_id).first()
     if not session:
@@ -125,12 +119,12 @@ async def delete_session(session_id: int, db: Session = Depends(get_db)):
     return {"status": "deleted"}
 
 @router.get("/history")
-def get_history(db: Session = Depends(get_db)):
+def get_history(db: Annotated[Session, Depends(get_db)]):
     """Retrieves all past test sessions sorted by recency."""
     return db.query(TestSession).order_by(TestSession.timestamp.desc()).all()
 
-@router.get("/{session_id}")
-def get_session_detail(session_id: int, db: Session = Depends(get_db)):
+@router.get("/{session_id}", responses={404: {"description": "Session not found"}})
+def get_session_detail(session_id: int, db: Annotated[Session, Depends(get_db)]):
     """Fetches full details and measured trace results for a single test session."""
     session = db.query(TestSession).filter(TestSession.id == session_id).first()
     if not session:

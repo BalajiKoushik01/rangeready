@@ -37,8 +37,8 @@ export const SettingsPage: FC = () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ role: 'Spectrum Analyzer', ip: specAnIp })
             });
-        } catch (e) {
-            console.error("Config save failed", e);
+        } catch {
+            console.error("Config save failed");
         }
         setTimeout(() => setIsSaved(false), 2000);
     };
@@ -56,7 +56,7 @@ export const SettingsPage: FC = () => {
             } else {
                 setConnectionStatus(prev => ({ ...prev, [role]: 'fail' }));
             }
-        } catch (e) {
+        } catch {
             setConnectionStatus(prev => ({ ...prev, [role]: 'fail' }));
         }
         setTimeout(() => setConnectionStatus(prev => ({ ...prev, [role]: 'idle' })), 3000);

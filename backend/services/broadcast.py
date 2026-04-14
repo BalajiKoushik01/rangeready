@@ -1,4 +1,11 @@
 from typing import List
+"""
+FILE: services/broadcast.py
+ROLE: WebSocket Connection Manager.
+TRIGGERS: backend/routers/commands.py, backend/services/status_poller.py.
+TARGETS: All connected frontend clients.
+DESCRIPTION: Manages active WebSocket connections and broadcasts telemetry packets and status updates in real-time.
+"""
 from fastapi import WebSocket
 
 class ConnectionManager:

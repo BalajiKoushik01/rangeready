@@ -55,7 +55,7 @@ export const GlassConsole: React.FC<{ isOpen: boolean; onClose: () => void }> = 
         content: data.response || "No response.", 
         time: new Date().toLocaleTimeString() 
       }]);
-    } catch (e) {
+    } catch {
       setLogs(prev => [...prev, { 
         type: 'err', 
         content: "Network error: Hardware target unreachable.", 

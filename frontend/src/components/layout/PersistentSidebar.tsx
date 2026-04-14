@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   HardDrives,
   Flask,
-  Cpu
+  Cpu,
 } from "@phosphor-icons/react";
 import { GvbLogo } from "../ui/Logo";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
@@ -66,6 +66,7 @@ export const PersistentSidebar: React.FC = () => {
     { name: "Automated Test Procedure Engine", path: "/templates", icon: <ShieldCheck weight="duotone" size={24} /> },
     { name: "Hardware Configuration and Settings", path: "/settings", icon: <Gear weight="fill" size={24} /> },
     { name: "Advanced Signal Processing", path: "/intelligence", icon: <Cpu weight="duotone" size={24} /> },
+    { name: "Master Instrument Control Interface", path: "/control", icon: <Pulse weight="duotone" size={24} /> },
   ];
 
   return (

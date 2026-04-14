@@ -1,11 +1,30 @@
 const { app, BrowserWindow } = require('electron');
-const path = require('path');
-const { spawn } = require('child_process');
+const path = require('node:path');
+const { spawn } = require('node:child_process');
+const http = require('node:http');
 
 let mainWindow;
+let splashWindow;
 let backendProcess;
 
-function createWindow() {
+function createSplashWindow() {
+  splashWindow = new BrowserWindow({
+    width: 500,
+    height: 350,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  splashWindow.loadFile(path.join(__dirname, 'splash.html'));
+  splashWindow.on('closed', () => (splashWindow = null));
+}
+
+function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -19,15 +38,22 @@ function createWindow() {
     show: false,
   });
 
-  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+  const isPendrive = process.env.PENDRIVE_MODE === 'true';
+  const isDev = !isPendrive && (process.env.NODE_ENV === 'development' || !app.isPackaged);
+  
   const startUrl = isDev 
     ? 'http://localhost:5173' 
     : `file://${path.join(__dirname, '../frontend/dist/index.html')}`;
 
+  console.log(`Loading Dashboard from: ${startUrl}`);
   mainWindow.loadURL(startUrl);
 
   mainWindow.once('ready-to-show', () => {
+    if (splashWindow) {
+      splashWindow.close();
+    }
     mainWindow.show();
+    mainWindow.maximize();
   });
 
   mainWindow.on('closed', () => {
@@ -36,18 +62,24 @@ function createWindow() {
 }
 
 function startBackend() {
+  const isPendrive = process.env.PENDRIVE_MODE === 'true';
   const isPackaged = app.isPackaged;
   let pythonExecutable;
   let scriptPath;
   let args;
 
-  if (isPackaged) {
-    // In production, the backend uses the bundled portable Python
+  if (isPendrive) {
+    // Pendrive Mode: Use relative path to portable python
+    pythonExecutable = path.join(__dirname, '../RangeReady_OFFLINE/python/python.exe');
+    scriptPath = path.join(__dirname, '../backend/main.py');
+    args = [scriptPath, '--port', '8787'];
+  } else if (isPackaged) {
+    // Packaged Mode: Use resources path
     pythonExecutable = path.join(process.resourcesPath, 'python_portable', 'python.exe');
     scriptPath = path.join(process.resourcesPath, 'app', 'backend', 'main.py');
     args = [scriptPath, '--port', '8787'];
   } else {
-    // In development, use the virtual environment
+    // Dev Mode
     pythonExecutable = process.platform === 'win32' 
       ? path.join(__dirname, '../.venv/Scripts/python.exe')
       : path.join(__dirname, '../.venv/bin/python');
@@ -55,24 +87,40 @@ function startBackend() {
     args = [scriptPath, '--port', '8787'];
   }
 
-  console.log(`Launching Backend from: ${pythonExecutable}`);
-  backendProcess = spawn(pythonExecutable, args);
-
-  backendProcess.stdout.on('data', (data) => {
-    console.log(`Backend: ${data}`);
+  console.log(`Launching Backend: ${pythonExecutable}`);
+  backendProcess = spawn(pythonExecutable, args, {
+    windowsHide: true, // Hide the console window on Windows
+    shell: false
   });
 
-  backendProcess.stderr.on('data', (data) => {
-    console.error(`Backend Error: ${data}`);
+  backendProcess.on('error', (err) => {
+    console.error('Failed to start backend:', err);
   });
 }
 
+function checkBackendReady(callback) {
+  const checkInterval = setInterval(() => {
+    http.get('http://localhost:8787/health', (res) => {
+      if (res.statusCode === 200) {
+        clearInterval(checkInterval);
+        callback();
+      }
+    }).on('error', () => {
+      // Continue polling
+    });
+  }, 500);
+}
+
 app.whenReady().then(() => {
+  createSplashWindow();
   startBackend();
-  createWindow();
+  
+  // Eager Launch: Show the main window immediately so the user can see the "Setup/Scanning" interface
+  // while the backend initializes and they plug in hardware.
+  createMainWindow();
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
   });
 });
 

@@ -1,6 +1,7 @@
-import { type FC, useState } from 'react';
-import type { RFBand } from '../../context/SystemStateContext';
-import { useSystemState } from '../../context/SystemStateContext';
+import type { FC } from 'react';
+import { useState } from 'react';
+import { useSystemState } from '../../hooks/useSystemState';
+import type { RFBand } from '../../types';
 import { Cpu, Sliders, Warning, CheckCircle } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 

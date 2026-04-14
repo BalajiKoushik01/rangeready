@@ -1,3 +1,10 @@
+"""
+FILE: drivers/manifest_loader.py
+ROLE: Local Asset Discovery & Registry Link.
+TRIGGERS: PluginManager (during driver resolution).
+TARGETS: backend/database.py (Queries registered instruments).
+DESCRIPTION: Loads instrument metadata (IP, Driver Type) from the DB to initialize physical drivers.
+"""
 import os
 import json
 from typing import Dict, Any, List
@@ -9,12 +16,19 @@ class SCPICommandTemplate(BaseModel):
     parameters: List[str] = [] # list of param names to insert
 
 class InstrumentManifest(BaseModel):
+    model_config = {"protected_namespaces": ()}  # 'model_regex' is intentional, not a Pydantic field
+
     id: str
     manufacturer: str
     model_regex: str
-    instrument_class: str # "Signal Generator", "Signal Analyzer"
+    instrument_class: str  # "Signal Generator", "Signal Analyzer"
+    
+    # Hints for discovery service to interrogation the device
+    # e.g. {"query_mode": "INST:SEL?", "expected_mode": "SA"}
+    discovery_probes: Dict[str, str] = {}
+    
     capability_flags: Dict[str, bool] = {}
-    commands: Dict[str, SCPICommandTemplate] = {}
+    commands: Dict[str, Any] = {} # Now supports raw strings or SCPICommandTemplate
     safe_limits: Dict[str, Any] = {}
 
 class ManifestLoader:
@@ -47,16 +61,19 @@ class ManifestLoader:
         raise ValueError(f"Manifest '{manifest_id}' not found.")
 
     @classmethod
-    def match_idn_string(cls, idn_response: str) -> InstrumentManifest:
+    def match_idn_string(cls, idn_response: str) -> Optional[InstrumentManifest]:
         """
         Attempts to match an *IDN? response string to a loaded manifest using model_regex.
-        Example IDN: "Keysight Technologies,N9020B,MY1234567,A.12.34"
         """
         import re
         for manifest in cls._manifests.values():
             if re.search(manifest.model_regex, idn_response, re.IGNORECASE):
                 return manifest
         return None
+
+    @classmethod
+    def get_all_manifests(cls) -> List[InstrumentManifest]:
+        return list(cls._manifests.values())
 
 # Auto-load manifests on import
 ManifestLoader.load_manifests()

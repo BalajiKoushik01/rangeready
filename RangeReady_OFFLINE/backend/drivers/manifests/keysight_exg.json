@@ -1,0 +1,23 @@
+{
+    "id": "keysight_exg_general",
+    "manufacturer": "Keysight Technologies",
+    "model_regex": "N5171B|N5172B|N5181B|N5182B|EXG",
+    "instrument_class": "Signal Generator",
+    "capability_flags": {
+        "vxi11": true,
+        "scpi": true,
+        "analog_mod": true
+    },
+    "commands": {
+        "reset": { "command": "*RST", "type": "trigger" },
+        "set_freq": { "command": "FREQ {value}", "type": "set", "parameters": ["value"] },
+        "set_pow": { "command": "POW {value}", "type": "set", "parameters": ["value"] },
+        "rf_on": { "command": "OUTP ON", "type": "trigger" },
+        "rf_off": { "command": "OUTP OFF", "type": "trigger" }
+    },
+    "safe_limits": {
+        "max_power": 19,
+        "min_freq": 9000,
+        "max_freq": 6000000000
+    }
+}

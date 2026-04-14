@@ -1,23 +1,24 @@
-# RangeReady RF: Industrial HIL Release (V5.1)
+# RangeReady RF: Industrial HIL Release (V6.0)
 
 > [!CAUTION]
 > **CONFIDENTIAL AND PROPRIETARY SOFTWARE**  
-> This software is the exclusive property of **GVB Tech**. Unauthorized access, reproduction, or distribution is strictly prohibited.
+> This software is the exclusive property of **GVB Tech**. Unauthorized access, reproduction, or distribution is strictly prohibited. For internal use in private repositories only.
 
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/Release-V5.1--INDUSTRIAL-green.svg)](https://github.com/BalajiKoushik01/rangeready)
+[![Release](https://img.shields.io/badge/Release-V6.0--INDUSTRIAL-green.svg)](https://github.com/BalajiKoushik01/rangeready)
 
-**RangeReady RF** is a production-grade Hardware-in-the-Loop (HIL) automation platform designed for high-precision RF instrumentation. Reaching its **V5.1 industrial milestone**, the platform features autonomous hardware discovery and deterministic SCPI orchestration for **Keysight** and **Rohde & Schwarz** laboratory environments.
+**RangeReady RF** is a production-grade Hardware-in-the-Loop (HIL) automation platform designed for high-precision RF instrumentation. Reaching its **V6.0 industrial milestone**, the platform features a deterministic command pipeline, autonomous hardware discovery, and sub-millisecond orchestration for **Keysight** and **Rohde & Schwarz** laboratory environments.
 
 ---
 
-## ⚡ Industrial Feature Matrix
+## ⚡ Industrial Feature Matrix (V6.0)
 
+- **Deterministic Mutex Control**: Guaranteed serialized hardware access with a global `lock_and_broadcast` guard, eliminating command collisions during high-speed tests.
+- **Universal Driver Registry**: Persistent, singleton-based driver management ensuring sub-millisecond dispatch to Keysight and R&S instruments.
 - **Intelligent Auto-Discovery**: Automated network bus interrogation (Port 5025) with recursive `*IDN?` identification for zero-configuration setup.
-- **Dynamic HIL Orchestration**: Direct LAN-based execution of industry-standard SCPI commands targets real Signal Generators and Spectrum Analyzers.
+- **Glass Console™ V3.0**: Enhanced real-time bus monitor with hardware interlock status and live SCPI traffic traceability.
 - **Actionable Error Matrix**: High-fidelity GUI feedback translates low-level bus timeouts into actionable physical troubleshooting steps.
-- **Offline Toolkit**: Pre-configured portable environment for restricted network deployment (Pendrive Mode).
-- **Glass Console™ V2.0**: Enhanced real-time bus monitor broadcasting live SCPI traffic for total operational traceability.
+- **Offline Intelligence**: Built-in support for offline AI command assistance and pre-configured portable environments (Pendrive Mode).
 - **Zero-Click Ignite**: One-step environment provisioning via cross-platform initialization scripts (`.bat` / `.sh`).
 
 ---

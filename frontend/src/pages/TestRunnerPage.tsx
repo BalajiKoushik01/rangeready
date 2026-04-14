@@ -16,7 +16,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { GlassCard } from '../components/ui/GlassCard';
 import { UPlotChart } from '../components/ui/UPlotChart';
 import { BusMonitor } from '../components/ui/BusMonitor';
-import { useSystemState, BAND_PRESETS } from '../context/SystemStateContext';
+import { useSystemState } from '../hooks/useSystemState';
+import { BAND_PRESETS } from '../types';
 
 interface TraceLog {
   timestamp: string;

@@ -23,7 +23,7 @@ class RFAnalysisEngine:
         """
         if not trace: return {"bw": 0, "center": 0, "q_factor": 0}
         
-        peak = AnalysisEngine.find_peak(trace)
+        peak = RFAnalysisEngine.find_peak(trace)
         threshold = peak['amp'] - db_down
         
         # Find points crossing the threshold

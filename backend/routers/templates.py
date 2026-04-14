@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from database import get_db
-from models.test_session import TestTemplate, TemplateStep
-from typing import List
+from ..database import get_db
+from ..models.test_session import TestTemplate, TemplateStep
+from typing import List, Annotated, Optional
 from pydantic import BaseModel
 
-router = APIRouter()
+router = APIRouter(prefix="/api/templates", tags=["Test Templates"])
 
 class StepCreate(BaseModel):
     name: str
@@ -13,8 +13,8 @@ class StepCreate(BaseModel):
     start_freq_hz: float
     stop_freq_hz: float
     points: int
-    upper_limit: float = None
-    lower_limit: float = None
+    upper_limit: Optional[float] = None
+    lower_limit: Optional[float] = None
 
 class TemplateCreate(BaseModel):
     name: str
@@ -22,7 +22,7 @@ class TemplateCreate(BaseModel):
     steps: List[StepCreate]
 
 @router.post("/")
-async def create_template(template: TemplateCreate, db: Session = Depends(get_db)):
+async def create_template(template: TemplateCreate, db: Annotated[Session, Depends(get_db)]):
     db_template = TestTemplate(name=template.name, description=template.description)
     db.add(db_template)
     db.commit()
@@ -40,18 +40,18 @@ async def create_template(template: TemplateCreate, db: Session = Depends(get_db
     return db_template
 
 @router.get("/")
-async def list_templates(db: Session = Depends(get_db)):
+async def list_templates(db: Annotated[Session, Depends(get_db)]):
     return db.query(TestTemplate).all()
 
-@router.get("/{template_id}")
-async def get_template(template_id: int, db: Session = Depends(get_db)):
+@router.get("/{template_id}", responses={404: {"description": "Template not found"}})
+async def get_template(template_id: int, db: Annotated[Session, Depends(get_db)]):
     template = db.query(TestTemplate).filter(TestTemplate.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
     return template
 
-@router.delete("/{template_id}")
-async def delete_template(template_id: int, db: Session = Depends(get_db)):
+@router.delete("/{template_id}", responses={404: {"description": "Template not found"}})
+async def delete_template(template_id: int, db: Annotated[Session, Depends(get_db)]):
     template = db.query(TestTemplate).filter(TestTemplate.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")

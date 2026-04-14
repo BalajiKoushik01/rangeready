@@ -22,11 +22,14 @@ rangeready.db
 backend/reports/*.pdf
 backend/reports/*.xlsx
 
-# Logs & System
+# System & Local Context
 *.log
 .DS_Store
 Thumbs.db
 .vscode/
+.idea/
+.gemini/
+scratch/
 
 # Build artifacts
 electron/release/
@@ -37,3 +40,8 @@ backend/dist/
 tools/
 dist/
 release/
+
+# Offline Bundle Binaries
+RangeReady_OFFLINE/python/
+RangeReady_OFFLINE/node_modules/
+RangeReady_OFFLINE/frontend_dist/

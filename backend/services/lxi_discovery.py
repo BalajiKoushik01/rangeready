@@ -1,3 +1,10 @@
+"""
+FILE: services/lxi_discovery.py
+ROLE: Low-Level Network Probing Engine.
+TRIGGERS: backend/services/discovery_service.py.
+TARGETS: Raw TCP Sockets and VXI-11 RPC ports on the subnet.
+DESCRIPTION: Implements the low-level handshake logic to verify if a discovered IP hosts a valid SCPI instrument.
+"""
 import socket
 import logging
 from typing import List, Dict, Optional
@@ -18,43 +25,48 @@ class LXIDiscoveryProtocol:
     @classmethod
     def broadcast_vxi11_discover(cls, subnet_broadcast: str = "255.255.255.255") -> List[Dict[str, str]]:
         """
-        Sends an ONC/RPC Portmapper broadcast to discover VXI-11 VISA instruments.
-        This is significantly faster than brute-force IP scanning.
+        Sends an ONC/RPC Portmapper broadcast to discover VXI-11 instruments on the local subnet.
         """
         discovered_devices = []
         
-        # Standard RPC Portmap CALL structure for VXI-11 Request (Mocked binary structure for demo)
-        # In a full implementation, python-vxi11 or zeroconf would handle this RPC binary mapping.
-        # Here we mock the socket interaction to demonstrate enterprise architecture readiness.
+        # Standard RPC Portmap v2 CALL packet for 'getport' (Prog: 0x0607AF, Ver: 1, Proto: TCP)
+        # 0x0607AF = 395183 (VXI-11 Device Core)
+        rpc_call = struct.pack(">LLLLLLLLLLL", 
+            0x12345678, # XID
+            0,          # Call
+            2,          # RPC Version
+            100000,     # Program: Portmapper
+            2,          # Version: 2
+            3,          # Procedure: GETPORT
+            0, 0,       # Credentials: NULL
+            0, 0,       # Verifier: NULL
+            395183,     # Prog: VXI-11
+            1,          # Ver: 1
+            6           # Proto: TCP
+        )
         
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            sock.settimeout(2.0)
+            sock.settimeout(1.5)
             
-            # Send RPC Broadcast (Mock payload)
-            sock.sendto(b'RPC_VXI11_DISCOVER', (subnet_broadcast, cls.VXI_11_PORT))
-            
-            logger.info("VXI-11 LXI Discovery broadcast sent. Waiting for instrument replies...")
+            sock.sendto(rpc_call, (subnet_broadcast, cls.VXI_11_PORT))
             
             while True:
                 try:
                     data, addr = sock.recvfrom(1024)
                     ip_address = addr[0]
-                    logger.info(f"VXI-11 Reply from {ip_address}")
-                    
-                    # Format standard VISA Resource String based on reply
-                    visa_resource = f"TCPIP0::{ip_address}::INSTR"
-                    discovered_devices.append({
-                        "ip": ip_address,
-                        "resource": visa_resource,
-                        "protocol": "LXI/VXI-11"
-                    })
+                    # Simple duplicate filter
+                    if not any(d["ip"] == ip_address for d in discovered_devices):
+                        discovered_devices.append({
+                            "ip": ip_address,
+                            "protocol": "VXI-11/LXI",
+                            "resource": f"TCPIP0::{ip_address}::INSTR"
+                        })
                 except socket.timeout:
                     break
         except Exception as e:
-            logger.error(f"LXI Discovery broadcast failed (Firewall issues or lack of network permission): {e}")
-            
+            logger.debug(f"VXI-11 Broadcast skipped: {e}")
         finally:
             sock.close()
             

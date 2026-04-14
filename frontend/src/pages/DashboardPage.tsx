@@ -1,14 +1,23 @@
+/**
+ * FILE: pages/DashboardPage.tsx
+ * ROLE: Central Command Dashboard.
+ * SOURCE: App Router (/dashboard)
+ * TARGET: GET /api/system/status and useTelemetry hook.
+ * TRACE: [Page Load] -> [GET /api/system/status]
+ */
 import React, { useState, useEffect } from 'react';
 import { Pulse, ShieldCheck, Cpu, HardDrive, Compass, List, Flask, MagicWand, Selection } from '@phosphor-icons/react';
 import { GlassCard } from '../components/ui/GlassCard';
 import { HardwareChecklist } from '../components/ui/HardwareChecklist';
-import { useSystemState } from '../context/SystemStateContext';
+import { useSystemState } from '../hooks/useSystemState';
+import { useTelemetry } from '../hooks/useTelemetry';
 
 export const DashboardPage: React.FC = () => {
   const [backendStatus, setBackendStatus] = useState<string>("Connecting...");
   const [sessionCount, setSessionCount] = useState(0);
   const [isChecklistOpen, setIsChecklistOpen] = useState(false);
   const { isAiMode } = useSystemState();
+  const { packets } = useTelemetry();
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -20,8 +29,8 @@ export const DashboardPage: React.FC = () => {
         const historyRes = await fetch(`http://${window.location.hostname}:8787/api/tests/history`);
         const history = await historyRes.json();
         setSessionCount(history.length);
-      } catch (e) {
-        setBackendStatus("Offline");
+      } catch {
+        console.error("Dashboard data load failed");
       }
     };
     fetchStatus();
@@ -31,9 +40,9 @@ export const DashboardPage: React.FC = () => {
 
   const stats = [
     { label: "Active Test Sessions", value: sessionCount, icon: <Pulse weight="duotone" />, color: "text-accent-blue" },
-    { label: "Hardware Abstraction Layer (HAL) Status", value: "Nominal", icon: <Cpu weight="duotone" />, color: "text-status-pass" },
-    { label: "Instrumentation Bus", value: "VXI-11 Protocol", icon: <HardDrive weight="duotone" />, color: "text-accent-blue-lume" },
-    { label: "Signal Stability Index", value: "99.98%", icon: <ShieldCheck weight="duotone" />, color: "text-status-pass" }
+    { label: "HAL Engine Status", value: backendStatus.includes("ERROR") ? "Offline" : "Reactive", icon: <Cpu weight="duotone" />, color: "text-status-pass" },
+    { label: "Instrumentation Bus", value: "VXI-11 / RAW", icon: <HardDrive weight="duotone" />, color: "text-accent-blue-lume" },
+    { label: "System Uptime", value: "Active", icon: <ShieldCheck weight="duotone" />, color: "text-status-pass" }
   ];
 
   return (
@@ -73,7 +82,7 @@ export const DashboardPage: React.FC = () => {
             </div>
             <div className="flex items-center gap-4 mb-4">
               <div className={`p-3 bg-white/5 rounded-2xl ${stat.color} border border-white/5 shadow-inner`}>
-                {React.cloneElement(stat.icon as React.ReactElement<any>, { size: 24, weight: "duotone" })}
+                {React.cloneElement(stat.icon as React.ReactElement<Record<string, unknown>>, { size: 24, weight: "duotone" })}
               </div>
               <span className="text-[9px] font-black text-[#64748B] uppercase tracking-[0.2em]">{stat.label}</span>
             </div>
@@ -91,14 +100,33 @@ export const DashboardPage: React.FC = () => {
             </h3>
           </div>
           
-          <GlassCard level={1} className="p-0 border-[#1E293B] bg-[#0B0F19] overflow-hidden min-h-[450px]">
-             <div className="w-full h-full min-h-[450px] flex items-center justify-center text-[#64748B] opacity-50 flex-col gap-6">
-                <div className="relative">
-                   <Selection size={64} weight="thin" className="animate-pulse" />
-                   <div className="absolute inset-0 bg-accent-blue/10 blur-2xl rounded-full" />
+          <GlassCard level={1} className="p-0 border-[#1E293B] bg-[#0B0F19] overflow-hidden min-h-[450px] flex flex-col">
+             {packets.length === 0 ? (
+                <div className="w-full h-full min-h-[450px] flex items-center justify-center text-[#64748B] opacity-50 flex-col gap-6">
+                    <div className="relative">
+                       <Selection size={64} weight="thin" className="animate-pulse" />
+                       <div className="absolute inset-0 bg-accent-blue/10 blur-[120px] rounded-full" />
+                    </div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em]">Awaiting hardware telemetry...</p>
                 </div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em]">Select an active session to view telemetry</p>
-             </div>
+             ) : (
+                <div className="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-[10px] custom-scrollbar scroll-smooth">
+                    {[...packets].reverse().map((pkt) => (
+                        <div key={pkt.id} className="flex gap-4 p-3 bg-white/[0.02] border border-white/[0.05] rounded-lg animate-in fade-in slide-in-from-left-2 duration-300">
+                            <span className="text-text-tertiary opacity-40 shrink-0">[{pkt.timestamp}]</span>
+                            <span className="text-accent-blue opacity-40 shrink-0 w-24 truncate">@{pkt.address}</span>
+                            <div className={`flex items-start gap-2 flex-1 ${
+                                pkt.type === 'sent' ? 'text-white' : 
+                                pkt.type === 'received' ? 'text-status-pass' : 
+                                'text-status-fail'
+                            }`}>
+                                <span className="opacity-40">{pkt.type === 'sent' ? '>' : '<'}</span>
+                                <span className="break-all tracking-tight">{pkt.packet}</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+             )}
           </GlassCard>
         </div>
 

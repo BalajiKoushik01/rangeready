@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   FilePdf, 
   FileXls, 
@@ -26,28 +26,31 @@ export const HistoryPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
-  const fetchHistory = () => {
-    setLoading(true);
-    fetch("http://127.0.0.1:8787/api/tests/history")
-      .then(res => res.json())
-      .then(data => {
-        setHistory(data || []);
-        setLoading(false);
-      })
-      .catch(() => {
-        setHistory([]);
-        setLoading(false);
-      });
-  };
-
-  useEffect(() => {
-    fetchHistory();
+  const fetchHistory = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    try {
+      const res = await fetch("http://127.0.0.1:8787/api/tests/history");
+      const data = await res.json();
+      setHistory(data || []);
+    } catch {
+      setHistory([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const deleteSession = (id: number) => {
-    if (globalThis.confirm("Permanently delete this measurement record?")) {
-      fetch(`http://127.0.0.1:8787/api/tests/${id}`, { method: 'DELETE' })
-        .then(() => fetchHistory());
+  useEffect(() => {
+    fetchHistory(false);
+  }, [fetchHistory]);
+
+  const deleteSession = async (id: number) => {
+    if (window.confirm("Permanently delete this measurement record?")) {
+      try {
+        await fetch(`http://127.0.0.1:8787/api/tests/${id}`, { method: 'DELETE' });
+        await fetchHistory(false);
+      } catch {
+        // ignore
+      }
     }
   };
 

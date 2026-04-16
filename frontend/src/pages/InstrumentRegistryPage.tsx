@@ -6,6 +6,7 @@
  * TRACE: [Establish Neural Link] -> [POST /api/instruments/]
  */
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   PlusCircle, 
   Monitor, 
@@ -13,15 +14,11 @@ import {
   GlobeHemisphereWest, 
   Trash, 
   PencilSimple,
-  Check,
   Radio,
-  HardDrive,
   Pulse,
-  EyeSlash,
+  HardDrive,
   Sparkle,
-  ArrowsClockwise,
-  Prohibit,
-  Power
+  ArrowsClockwise
 } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GlassCard } from '../components/ui/GlassCard';
@@ -39,6 +36,7 @@ interface Instrument {
 }
 
 export const InstrumentRegistryPage: React.FC = () => {
+    const navigate = useNavigate();
     const [instruments, setInstruments] = useState<Instrument[]>([]);
     const [discoveryActive, setDiscoveryActive] = useState(true);
     const [showWizard, setShowWizard] = useState(false);
@@ -96,23 +94,7 @@ export const InstrumentRegistryPage: React.FC = () => {
         }
     };
 
-    /* 
-     * TRACE: GUI [Ignore Button] -> API [POST /api/system/blacklist]
-     * Adds the IP to the persistent blacklist in config.json. 
-     * The DiscoveryService skips these IPs in all subsequent scans.
-     */
-    const handleIgnoreIP = async (ip: string) => {
-        try {
-            await fetch(`${API_BASE}/system/blacklist`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ip })
-            });
-            fetchData();
-        } catch (err) {
-            console.error("Blacklist failed", err);
-        }
-    };
+
 
     /* 
      * TRACE: GUI [Establish Neural Link] -> API [POST/PUT /api/instruments/]
@@ -249,6 +231,24 @@ export const InstrumentRegistryPage: React.FC = () => {
                                             </div>
 
                                             <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                {/* MISSION CONTROL LINK: Restoration of the 1-to-1 Replica Access */}
+                                                {(inst.model.toUpperCase().includes('N51') || inst.model.toUpperCase().includes('N90') || inst.name.toLowerCase().includes('keysight')) && (
+                                                    <button 
+                                                        onClick={() => navigate('/control')}
+                                                        title="Open Keysight 1-to-1 UI"
+                                                        className="p-3 bg-accent-blue/10 border border-accent-blue/20 rounded-xl hover:bg-accent-blue hover:text-white transition-all text-accent-blue">
+                                                        <Monitor size={20} weight="fill" />
+                                                    </button>
+                                                )}
+                                                {(inst.model.toUpperCase().includes('SMW') || inst.model.toUpperCase().includes('FSW') || inst.name.toLowerCase().includes('rs') || inst.name.toLowerCase().includes('rohde')) && (
+                                                    <button 
+                                                        onClick={() => navigate('/control')}
+                                                        title="Open R&S Precision UI"
+                                                        className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl hover:bg-rose-500 hover:text-white transition-all text-rose-500">
+                                                        <Monitor size={20} weight="fill" />
+                                                    </button>
+                                                )}
+                                                
                                                 <button 
                                                     onClick={() => openEdit(inst)}
                                                     className="p-3 bg-white/5 border border-white/10 rounded-xl hover:bg-white/20 transition-all text-white">
@@ -391,7 +391,7 @@ export const InstrumentRegistryPage: React.FC = () => {
             <AnimatePresence>
                 {showWizard && (
                     <InstrumentProfilerWizard
-                        onComplete={(savedInstrument) => {
+                        onComplete={() => {
                             setShowWizard(false);
                             fetchData(); // Refresh list to show newly profiled instrument
                         }}

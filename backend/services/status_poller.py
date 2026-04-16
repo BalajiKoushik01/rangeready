@@ -1,10 +1,13 @@
 import asyncio
-from typing import Dict, Any, Optional
+import logging
+from typing import Dict, Any, Optional, List
 from backend.services.config_service import config_service
 from backend.services.broadcast import manager
 from backend.services.asset_service import asset_service
 from backend.services.driver_registry import driver_registry
 from backend.drivers.generic_scpi import GenericSCPIDriver
+
+logger = logging.getLogger("service.poller")
 
 class StatusPoller:
     """
@@ -16,7 +19,7 @@ class StatusPoller:
         self.interval_s = interval_s
         self.idle_interval_s = idle_interval_s
         self.running = False
-        self._task = None
+        self._task: Optional[asyncio.Task] = None
         self._consecutive_errors: Dict[str, int] = {}
         self._consecutive_empty = 0
 
@@ -25,7 +28,7 @@ class StatusPoller:
             return
         self.running = True
         self._task = asyncio.create_task(self._poll_loop())
-        print("Hardware Status Poller: ACTIVE (1.5s active / 10s idle backoff)")
+        logger.info("Hardware Status Poller: ACTIVE (Adaptive Interval)")
 
     async def stop(self):
         self.running = False
@@ -34,9 +37,11 @@ class StatusPoller:
             try:
                 await self._task
             except asyncio.CancelledError:
+                # Expected when canceling a task
                 pass
 
     async def _poll_loop(self):
+        """Main polling orchestrator."""
         while self.running:
             any_configured = False
             try:
@@ -46,34 +51,11 @@ class StatusPoller:
                 
                 for asset in active_assets:
                     any_configured = True
-                    # Use role as key for UI grouping (e.g. signal_generator -> siggen)
-                    key = "siggen" if "generator" in asset.instrument_class else "analyzer"
-                    
-                    # 1. Resolve Driver from Registry (Persistent Singleton)
-                    if asset.driver_id == "KeysightUniversalDriver":
-                        from backend.drivers.keysight_universal import KeysightUniversalDriver
-                        drv_cls = KeysightUniversalDriver
-                    elif asset.driver_id == "RSUniversalDriver":
-                        from backend.drivers.rs_universal import RSUniversalDriver
-                        drv_cls = RSUniversalDriver
-                    else:
-                        drv_cls = GenericSCPIDriver
-
-                    drv = await driver_registry.get_driver(asset.id, drv_cls, sim=sim)
-                    
-                    if drv:
-                        # 2. Acquire Lock to prevent UI collision
-                        lock = driver_registry.get_lock(asset.id)
-                        # Use a shorter timeout for polling (1s) to avoid blocking UI commands for too long
-                        try:
-                            async with asyncio.timeout(1.0):
-                                async with lock:
-                                    status = self._query_role_status(asset.instrument_class, drv)
-                                    if status:
-                                        update["data"][key] = status
-                        except (asyncio.TimeoutError, Exception) as e:
-                            # If we can't get the lock in 1s, the UI is likely busy. Skipping this poll cycle.
-                            pass
+                    # Delegate polling to sub-method to reduce complexity
+                    status = await self._poll_single_asset(asset, sim)
+                    if status:
+                        key = "siggen" if "generator" in asset.instrument_class.lower() else "analyzer"
+                        update["data"][key] = status
 
                 if update["data"]:
                     await manager.broadcast(update)
@@ -83,33 +65,78 @@ class StatusPoller:
 
                 sleep_time = self._calculate_sleep_time(any_configured)
 
+            except asyncio.CancelledError:
+                # RE-RAISE so the event loop knows this task is dying
+                raise
             except Exception as e:
-                print(f"Status Poller Error: {e}")
+                logger.error(f"Status Poller Global Error: {e}")
                 sleep_time = self.idle_interval_s
 
             await asyncio.sleep(sleep_time)
 
-    def _query_role_status(self, role: str, drv) -> Optional[Dict[str, Any]]:
-        """Queries the instrument for its current status block."""
+    async def _poll_single_asset(self, asset: Any, sim: bool) -> Optional[Dict[str, Any]]:
+        """Handles driver resolution, locking, and querying for a single asset."""
         try:
-            if role == "Signal Generator":
+            drv_cls = self._resolve_driver_class(asset.driver_id)
+            drv = await driver_registry.get_driver(asset.id, drv_cls, sim=sim)
+            
+            if not drv:
+                return None
+
+            lock = driver_registry.get_lock(asset.id)
+            async with asyncio.timeout(1.0):
+                async with lock:
+                    return self._query_role_status(asset.instrument_class, drv)
+        except asyncio.TimeoutError:
+            return None
+        except Exception as e:
+            self._handle_polling_error(asset.instrument_class, e)
+            return None
+
+    def _resolve_driver_class(self, driver_id: str) -> Any:
+        """Dynamic driver class mapping."""
+        if driver_id == "KeysightUniversalDriver":
+            from backend.drivers.keysight_universal import KeysightUniversalDriver
+            return KeysightUniversalDriver
+        elif driver_id == "RSUniversalDriver":
+            from backend.drivers.rs_universal import RSUniversalDriver
+            return RSUniversalDriver
+        return GenericSCPIDriver
+
+    def _query_role_status(self, role: str, drv: Any) -> Optional[Dict[str, Any]]:
+        """Internal worker to execute the driver-specific status queries."""
+        try:
+            if "generator" in role.lower():
                 status = drv.sg_get_complete_status()
             else:
                 status = drv.sa_get_complete_status()
+                # High-Performance Binary Trace Streaming
+                try:
+                    trace = drv.get_trace()
+                    if trace:
+                        # Broadcast via ultra-fast binary WebSocket channel
+                        asyncio.run_coroutine_threadsafe(
+                             manager.broadcast_binary_trace(trace, instrument_id=f"SA-{drv.address.split('.')[-1]}"),
+                             asyncio.get_event_loop()
+                        )
+                        # Remove from status to save JSON bandwidth
+                        if "trace" in status: del status["trace"]
+                except Exception as b_err:
+                    logger.debug(f"Binary trace broadcast skipped: {b_err}")
+                
             self._consecutive_errors[role] = 0
             return status
         except Exception as e:
-            self._handle_polling_error(role, drv, e)
+            self._handle_polling_error(role, e)
             return None
 
-    def _handle_polling_error(self, role: str, drv, error: Exception):
-        """Handles a failed poll by logging and notifying registry."""
-        print(f"Polling error for {role}: {error}")
+    def _handle_polling_error(self, role: str, error: Exception):
+        """Centralized error accounting for the adaptive sleep backoff."""
+        logger.warning(f"Polling error for {role}: {error}")
         self._consecutive_errors[role] = self._consecutive_errors.get(role, 0) + 1
-        # Registry handles connection cleanup in next get_driver call if drv.is_connected is False
 
     def _calculate_sleep_time(self, any_configured: bool) -> float:
-        """Calculates adaptive sleep interval with error backoff."""
+        """Adaptive sleep: backs off when errors occur, idles when no assets are active."""
         if not any_configured:
             return self.idle_interval_s
             

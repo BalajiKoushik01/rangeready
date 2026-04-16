@@ -54,18 +54,8 @@ export const TestRunnerPage: React.FC = () => {
   ];
 
   const goldenTrace = useMemo<[number[], number[]]>(() => {
-    const freqs: number[] = [];
-    const amps: number[] = [];
-    const range = bandLimits.max - bandLimits.min;
-    const step = range / 1000;
-    
-    for(let i=0; i<1000; i++) {
-        const freq = bandLimits.min + (i * step);
-        freqs.push(freq);
-        amps.push(-18 + Math.sin(i * 0.05) * 2);
-    }
-    return [freqs, amps];
-  }, [bandLimits.min, bandLimits.max]);
+    return [[], []]; // Neural Matrix Industrial Fix: Remove mathematical simulated traces
+  }, []);
 
   const { peak, qFactor } = useMemo(() => {
      let p = null;

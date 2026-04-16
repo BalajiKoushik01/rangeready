@@ -1,5 +1,9 @@
 {
-    "Signal Generator": "169.254.106.120",
+    "Signal Generator": "169.254.1.10",
     "Spectrum Analyzer": "192.168.1.142",
-    "simulation_mode": false
+    "simulation_mode": false,
+    "discovery_active": true,
+    "discovery_stop_after_one": true,
+    "blacklisted_ips": [],
+    "autonomous_ai_healing": false
 }

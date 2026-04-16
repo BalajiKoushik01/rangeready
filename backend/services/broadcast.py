@@ -45,21 +45,48 @@ class ConnectionManager:
             print(f"WS: Client disconnected. Total: {len(self.active_connections)}")
 
     async def broadcast(self, message: dict):
-        """
-        Sends a JSON-formatted message to all currently connected clients.
+        """Standard JSON broadcast to all active subscribers."""
+        if not self.active_connections:
+            return
         
-        Handles individual connection failures by disconnecting the faulty client.
-        
-        Args:
-            message: A dictionary to be sent as JSON.
-        """
+        # Add timestamp if missing
+        if "timestamp" not in message:
+            import datetime
+            message["timestamp"] = datetime.datetime.now().isoformat()
+
+        dead_links = []
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
-            except Exception as e:
-                # Catching any connection-related errors to ensure loop continuity
-                print(f"WS: Failed to send to connection: {e}")
-                self.disconnect(connection)
+            except Exception:
+                dead_links.append(connection)
+        
+        for dead in dead_links:
+            self.disconnect(dead)
+
+    async def broadcast_bytes(self, data: bytes):
+        """High-Performance Binary broadcast to all active subscribers."""
+        if not self.active_connections:
+            return
+            
+        dead_links = []
+        for connection in self.active_connections:
+            try:
+                await connection.send_bytes(data)
+            except Exception:
+                dead_links.append(connection)
+        
+        for dead in dead_links:
+            self.disconnect(dead)
+
+    async def broadcast_log(self, level: str, message: str, logger_name: str):
+        """Specialized broadcast for industrial backend logs."""
+        await self.broadcast({
+            "type": "system_log",
+            "level": level,
+            "message": message,
+            "source": logger_name
+        })
 
     async def broadcast_trace(self, trace_data: List[float], metadata: dict = None):
         """
@@ -77,6 +104,19 @@ class ConnectionManager:
             "metadata": metadata or {}
         }
         await self.broadcast(message)
+
+    async def broadcast_binary_trace(self, trace_data: List[float], instrument_id: str = "SA1"):
+        """
+        Ultra-High Speed: Broadcasts trace as a raw binary blob.
+        Packet Structure: [Header: 4 chars][ID length: 1 byte][ID][Point Count: 4 bytes][Payload: Float32s]
+        """
+        import struct
+        header = b"TRCE"
+        id_bytes = instrument_id.encode()
+        payload = struct.pack(f"<{len(trace_data)}f", *trace_data)
+        
+        packet = header + struct.pack("B", len(id_bytes)) + id_bytes + struct.pack("<I", len(trace_data)) + payload
+        await self.broadcast_bytes(packet)
         
     async def broadcast_status(self, status_msg: str):
         """

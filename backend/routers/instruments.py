@@ -38,7 +38,7 @@ MODEL_FAMILIES = {
 }
 
 # ─────────────────────────── ROUTER & SCHEMAS ────────────────────────────────
-router = APIRouter(prefix="/api/instruments", tags=["Hardware Registry"])
+router = APIRouter(prefix="", tags=["Hardware Registry"])
 
 class InstrumentBase(BaseModel):
     """Base schema for an RF instrument asset."""

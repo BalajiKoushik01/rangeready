@@ -14,7 +14,7 @@ from backend.services.config_service import config_service
 from backend.services.broadcast import manager
 from backend.services.scpi_negotiation_engine import SCPINegotiationEngine
 
-router = APIRouter(prefix="/api/commands", tags=["Hardware Control"])
+router = APIRouter(prefix="", tags=["Hardware Control"])
 
 class CommandRequest(BaseModel):
     driver_name: str

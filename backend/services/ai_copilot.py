@@ -1,568 +1,337 @@
 """
 FILE: services/ai_copilot.py
-ROLE: Offline AI Intelligence Engine — Chat, Agentic Control, SCPI Healing.
+ROLE: Industrial AI Intelligence Engine — Portable Ollama Apex.
 TRIGGERS:
-  - routers/ai.py (all AI API endpoints)
-  - services/scpi_negotiation_engine.py (as last-resort healer)
+  - routers/ai.py (AI API endpoints)
+  - services/scpi_negotiation_engine.py (Autonomous Healer)
 TARGETS:
-  - Local GGUF model file (backend/models/gemma-2-2b-it.Q4_K_M.gguf)
-  - backend/drivers/ (for agentic execution)
-  - Hugging Face Hub CDN (only for initial download, can be done offline-first)
+  - backend/bin/ollama.exe (Portable Runtime)
+  - backend/models/Modelfile (Virtual Training)
+  - backend/models/ollama/ (Isolated Knowledge Storage)
 
 DESCRIPTION:
-  The AICopilot is a singleton service that wraps a local quantized LLM
-  (Gemma-2-2B-IT) to provide four distinct capabilities:
-
-  1. SCPI TRANSLATION — "Set frequency to 2.4 GHz" → "SOUR:FREQ:CW 2.4E9"
-  2. ANOMALY DIAGNOSIS — "Gain dropped 3dB in L-band" → RF engineering hypothesis
-  3. AGENTIC EXECUTION — Translates a command AND sends it to the real hardware
-  4. AI HEAL — Given error code + context, suggests a corrected SCPI command
-
-DATA FLOW (Agentic Mode):
-  GUI [Chat] → POST /api/ai/agentic-execute
-  → ai_copilot.agentic_execute(query, instrument)
-  → llm.generate(SCPI_SYSTEM_PROMPT + query)
-  → extracted_command → PluginManager.get_driver() → driver.send_command()
-  → SCPINegotiationEngine check → result
-  → broadcast(telemetry_packet) → GUI displays hardware's response
-
-MODEL INFO:
-  File: gemma-2-2b-it.Q4_K_M.gguf (~1.6 GB)
-  Source: huggingface.co/bartowski/gemma-2-2b-it-GGUF
-  Why this model:
-    - Instruction-tuned (understands "translate to SCPI")
-    - 2B params → fast CPU inference (~5-15 tokens/second)
-    - Q4_K_M quantisation → best quality/size ratio for 4-bit
-    - MIT license → safe for commercial/lab use
-
-DEPENDENCIES (install once):
-  pip install llama-cpp-python huggingface_hub
+  The AICopilot-Apex is a professional singleton service that orchestrates a
+  portable Ollama runtime. It provides industrial-grade radar expertise, 
+  autonomous SCPI healing, and manufacturer-aware instrument control.
 """
 
 import os
 import re
 import time
+import json
+import socket
 import logging
 import threading
-from typing import Dict, Any, Optional, Callable, Generator
+import subprocess
+from typing import Dict, Any, Optional, List, Union
 from pathlib import Path
+import requests
 
-logger = logging.getLogger("ai.copilot")
+logger = logging.getLogger("ai.copilot.apex")
+
+# --- CONFIGURATION & PATHS ---
+
+BASE_DIR = Path(__file__).parent.parent
+BIN_DIR = BASE_DIR / "bin"
+MODELS_DIR = BASE_DIR / "models"
+OLLAMA_STORAGE = MODELS_DIR / "ollama"
+MODEL_NAME = "rangeready-v6"
+
+# Ensure environment isolation for portability
+os.environ["OLLAMA_MODELS"] = str(OLLAMA_STORAGE)
+os.environ["OLLAMA_HOST"] = "127.0.0.1:11434"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SYSTEM PROMPTS
+# OLLAMA MANAGER (The "Hands")
+# Handles the lifecycle of the portable AI server
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Core SCPI assistant prompt.
-# Instructs the model to respond ONLY with valid SCPI command strings.
-SCPI_SYSTEM_PROMPT = """You are an expert RF instrument control assistant for Keysight, Rohde & Schwarz, Anritsu, Tektronix, and other SCPI-compliant instruments.
-
-Your ONLY job is to translate a user's natural language instruction into the correct SCPI command string.
-Rules:
-- Output ONLY the SCPI command. No explanation, no prefix, no markdown.
-- Use standard IEEE 488.2 and SCPI-99 syntax.
-- For values: use scientific notation (e.g. 2.4E9 for 2.4 GHz).
-- If multiple commands are needed, separate them with a semicolon on one line.
-- If the request is ambiguous, provide the most common command.
-
-Examples:
-User: Set frequency to 2.4 GHz
-SOUR:FREQ:CW 2.4E9
-
-User: Turn on the RF output
-OUTP ON
-
-User: Set output power to -10 dBm
-SOUR:POW:LEV:IMM:AMPL -10
-
-User: Enable AM modulation at 50% depth
-SOUR:AM:STAT ON;SOUR:AM:DEPT 50
-"""
-
-# RF anomaly diagnosis prompt.
-# Instructs the model to give engineering hypotheses.
-DIAGNOSIS_SYSTEM_PROMPT = """You are a senior RF Test & Measurement engineer with expertise in TR module testing, VNA calibration, signal generation, and spectrum analysis.
-
-When given a test failure description, provide a concise 2-3 sentence engineering hypothesis about the root cause.
-Focus on: thermal drift, VSWR mismatch, LO leakage, PA compression, cable issues, calibration errors, component aging.
-Be specific and actionable. Use technical terminology.
-"""
-
-# Agentic execution context prompt.
-# Gives the model full awareness of the active instrument.
-AGENTIC_SYSTEM_PROMPT = """You are an agentic RF instrument controller with direct hardware access.
-You will receive a natural language command and the connected instrument's identity.
-Translate the command to the correct SCPI syntax for that specific instrument.
-Output ONLY the SCPI command string — it will be sent directly to the hardware.
-"""
-
-# SCPI healing prompt — given an error, suggest a fix.
-HEAL_SYSTEM_PROMPT = """You are a SCPI debugging assistant.
-Given a failed SCPI command, the instrument IDN, and the error code received, suggest the corrected command.
-Output ONLY the corrected SCPI command string. No explanation.
-"""
-
-
-class AICopilot:
-    """
-    Offline AI Intelligence Engine for RangeReady.
-
-    Singleton — access via module-level `ai_copilot` instance.
-    Runs a local quantized Gemma-2-2B model for SCPI translation,
-    anomaly diagnosis, and agentic hardware control.
-
-    USAGE:
-        from backend.services.ai_copilot import ai_copilot
-        result = ai_copilot.translate_to_scpi("set frequency to 900 MHz")
-        # → "SOUR:FREQ:CW 900E6"
-
-    AGENTIC USAGE:
-        result = ai_copilot.agentic_execute("turn on RF output", instrument, driver)
-        # → Generates SCPI, sends to hardware, returns actual response
-    """
-
-    MODEL_FILENAME = "gemma-2-2b-it.Q4_K_M.gguf"
-    MODEL_REPO    = "bartowski/gemma-2-2b-it-GGUF"
-    MODEL_HF_FILE = "gemma-2-2b-it-Q4_K_M.gguf"
-
+class OllamaManager:
+    """Manages the portable ollama.exe server lifecycle."""
+    
     def __init__(self):
-        self.model_path = Path(__file__).parent.parent / "models" / self.MODEL_FILENAME
-        self.llm = None              # llama-cpp-python Llama instance
-        self.ollama_model = None     # Ollama model name if using Ollama fallback
-        self.backend = "none"        # "llama_cpp" | "ollama" | "none"
-        self.is_loading = False
-        self.load_error: Optional[str] = None
+        self.process: Optional[subprocess.Popen] = None
+        self.exe_path = BIN_DIR / "ollama.exe"
+        self._booting = False
 
-        # Download progress state (for GUI polling)
-        self.download_progress: Dict[str, Any] = {
-            "active": False,
-            "percent": 0,
-            "downloaded_mb": 0,
-            "total_mb": 0,
-            "speed_mbps": 0,
-            "status": "idle",   # idle | downloading | complete | error
-        }
+    def is_running(self) -> bool:
+        """Checks if the Ollama server is responsive on its default port."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.5)
+            return s.connect_ex(('127.0.0.1', 11434)) == 0
 
-        # Try to load model on startup (non-blocking)
-        threading.Thread(target=self._initialize_engine, daemon=True).start()
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # ENGINE INITIALIZATION
-    # ─────────────────────────────────────────────────────────────────────────
-
-    def _initialize_engine(self):
-        """
-        Attempts to load the local GGUF model.
-        Priority order:
-          1. llama-cpp-python + local GGUF file (best, fully offline)
-          2. Ollama (if running locally) — zero-compile fallback
-          3. None — AI features in fallback mode
-
-        Runs in a background thread — does NOT block FastAPI startup.
-        """
-        if self.is_loading:
+    def start(self):
+        """Starts the ollama server in the background if not already running."""
+        if self.is_running() or self._booting:
             return
-        self.is_loading = True
+        
+        if not self.exe_path.exists():
+            # If the binary isn't extracted yet, we try to use the system one as fallback
+            # but log a warning about portability.
+            logger.warning("[AI] Portable ollama.exe not found in backend/bin. Trying system PATH fallback.")
+            self.exe_path = "ollama"
 
+        self._booting = True
+        logger.info("[AI] Booting Portable AI Engine...")
         try:
-            # ── Priority 1: llama-cpp-python ────────────────────────────────
-            from llama_cpp import Llama
-
-            if not self.model_path.exists():
-                logger.warning(
-                    f"[AI] Model not found at {self.model_path}. "
-                    "Trying Ollama fallback..."
-                )
-                raise ImportError("Model file missing — try Ollama")
-
-            logger.info(f"[AI] Loading local GGUF from {self.model_path} ...")
-            self.llm = Llama(
-                model_path=str(self.model_path),
-                n_ctx=2048,
-                n_threads=4,
-                n_gpu_layers=0,    # CPU-only for max portability
-                verbose=False,
+            # We use DETACHED_PROCESS to ensure it keeps running if the backend is reloaded
+            # during development, but for industrial use we manage the life-cycle.
+            self.process = subprocess.Popen(
+                [str(self.exe_path), "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=os.environ,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
-            self.backend = "llama_cpp"
-            logger.info("[AI] ✓ llama-cpp-python backend ready")
+            # Wait for server to warm up
+            for _ in range(15):
+                if self.is_running():
+                    logger.info("[AI] Portable AI Engine READY")
+                    self._booting = False
+                    return
+                time.sleep(1)
+        except Exception as e:
+            logger.error(f"[AI] Failed to boot engine: {e}")
+        self._booting = False
+
+    def ensure_model(self):
+        """Ensures an AI brain is ready. If rangeready-v6 is missing, it dynamically falls back to the first available offline model to prevent engine failure."""
+        global MODEL_NAME
+        if self._booting:
             return
+        
+        logger.info("[AI] Checking for available offline models...")
+        try:
+            # Check if ANY models exist
+            resp = requests.get(f"http://{os.environ['OLLAMA_HOST']}/api/tags", timeout=5)
+            data = resp.json()
+            models = [m['name'] for m in data.get('models', [])]
+            
+            if not models:
+                logger.error("[AI] CRITICAL: No offline models found in Ollama storage. AI Features DISABLED.")
+                logger.info(f"[AI] Storage Path: {OLLAMA_STORAGE}")
+                self.status = "no_models"
+                return
+
+            # Prioritize rangeready-v6 specifically
+            if any("rangeready-v6" in m for m in models):
+                logger.info(f"[AI] RangeReady Expert Model 'rangeready-v6' is active.")
+                self.active_model = "rangeready-v6"
+            elif any(MODEL_NAME in m for m in models):
+                logger.info(f"[AI] Specific Model '{MODEL_NAME}' is active.")
+                self.active_model = MODEL_NAME
+            else:
+                self.active_model = models[0]
+                logger.info(f"[AI] Fallback model active: '{self.active_model}'")
+                
+            # Update the global MODEL_NAME for this session
+            MODEL_NAME = self.active_model
 
         except Exception as e:
-            logger.warning(f"[AI] llama-cpp-python not available ({type(e).__name__}). Trying Ollama...")
+            logger.error(f"[AI] Model auto-resolution failed: {e}")
 
-        # ── Priority 2: Ollama ───────────────────────────────────────────────
-        # Ollama is a simple local AI server (ollama.ai).
-        # Install: download https://ollama.ai, then run: ollama pull gemma2:2b
-        try:
-            import requests as _req
-            resp = _req.get("http://localhost:11434/api/tags", timeout=2)
-            if resp.status_code == 200:
-                models = [m["name"] for m in resp.json().get("models", [])]
-                # Find a suitable model
-                for candidate in ["gemma2:2b", "gemma2", "gemma:2b", "llama3.2", "llama3", "phi3"]:
-                    if any(candidate in m for m in models):
-                        self.ollama_model = candidate
-                        self.backend = "ollama"
-                        logger.info(f"[AI] ✓ Ollama backend ready with model '{candidate}'")
-                        return
-                logger.warning(f"[AI] Ollama running but no suitable model found. Available: {models}")
-                logger.warning("[AI] Run: ollama pull gemma2:2b")
-        except Exception:
-            pass
+# ─────────────────────────────────────────────────────────────────────────────
+# AI COPILOT APEX (The "Brain")
+# ─────────────────────────────────────────────────────────────────────────────
 
-        # ── Priority 3: No AI ────────────────────────────────────────────────
-        self.load_error = (
-            "No AI backend available. Options:\n"
-            "1. Download model via Intelligence HUD (requires llama-cpp-python)\n"
-            "2. Install Ollama from https://ollama.ai then run: ollama pull gemma2:2b"
-        )
-        logger.warning(f"[AI] No backend available: {self.load_error}")
+class AICopilotApex:
+    """Industrial Intelligence Engine for RangeReady."""
+
+    def __init__(self):
+        self.manager = OllamaManager()
         self.backend = "none"
-        self.is_loading = False
+        self.status = "initializing"
+        self.active_model = MODEL_NAME
+        
+        # Initialization thread
+        threading.Thread(target=self._bootstrap, daemon=True).start()
+
+    def _bootstrap(self):
+        """Warm up the engine and ensure the brain is ready."""
+        logger.info(f"[AI] Initializing with local binary: {self.manager.exe_path}")
+        self.manager.start()
+        if self.manager.is_running():
+            self.backend = "ollama-apex"
+            logger.info("[AI] Engine responsive. Running post-boot integrity checks...")
+            self.manager.ensure_model()
+            self.status = "ready"
+            logger.info(f"[AI] SYSTEM READY: {self.active_model} is operational.")
+        else:
+            logger.error("[AI] CORE ENGINE FAILURE. Check if backend/bin/ollama.exe is blocked or missing.")
+            self.status = "engine_error"
 
     # ─────────────────────────────────────────────────────────────────────────
-    # MODEL DOWNLOAD (called from API endpoint, runs in thread)
+    # CORE INFERENCE
     # ─────────────────────────────────────────────────────────────────────────
 
-    def start_download(self, progress_callback: Optional[Callable] = None):
-        """
-        Downloads the Gemma-2-2B model from Hugging Face Hub with progress reporting.
+    def _generate(self, prompt: str, system: Optional[str] = None, max_tokens: int = 128) -> str:
+        """Internal generation call to the local micro-server."""
+        if not self.manager.is_running():
+            return "⏳ AI Engine is booting (Wait 10s)..."
 
-        TRACE: GUI [Download Model] → POST /api/ai/download → this method (thread)
-               → huggingface_hub.hf_hub_download() → model saved to backend/models/
-               → _initialize_engine() on completion
-
-        Args:
-            progress_callback: Optional callable(percent, downloaded_mb, total_mb, speed_mbps)
-        """
-        if self.download_progress["status"] == "downloading":
-            logger.warning("[AI] Download already in progress.")
-            return
-
-        def _download():
-            self.download_progress.update({
-                "active": True, "percent": 0,
-                "status": "downloading", "downloaded_mb": 0,
-                "total_mb": 0, "speed_mbps": 0,
-            })
-            try:
-                self.model_path.parent.mkdir(parents=True, exist_ok=True)
-                requests = self._ensure_download_deps()
-
-                url = (
-                    f"https://huggingface.co/{self.MODEL_REPO}/resolve/main/"
-                    f"{self.MODEL_HF_FILE}?download=true"
-                )
-                logger.info(f"[AI] Downloading from {url}")
-                response = requests.get(url, stream=True, timeout=30)
-                response.raise_for_status()
-
-                total = int(response.headers.get("content-length", 0))
-                self.download_progress["total_mb"] = round(total / (1024 * 1024), 1)
-
-                self._execute_download_loop(response, total, progress_callback)
-
-                self.download_progress.update({"status": "complete", "percent": 100, "active": False})
-                logger.info("[AI] Download complete. Loading model …")
-                self._initialize_engine()
-
-            except Exception as e:
-                self.download_progress.update({"status": "error", "active": False, "error": str(e)})
-                logger.error(f"[AI] Download failed: {e}")
-
-        threading.Thread(target=_download, daemon=True).start()
-
-    def _ensure_download_deps(self):
-        """Dynamically ensures requests is available for streaming."""
         try:
-            import requests
-            return requests
-        except ImportError:
-            import subprocess, sys
-            logger.info("[AI] Installing missing download dependencies...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "requests", "-q"])
-            import requests
-            return requests
-
-    def _execute_download_loop(self, response, total_bytes, callback):
-        """Handles the byte-streaming loop and progress updates."""
-        downloaded = 0
-        start_time = time.time()
-        chunk_size = 1024 * 1024
-
-        with open(self.model_path, "wb") as f:
-            for chunk in response.iter_content(chunk_size=chunk_size):
-                if not chunk:
-                    continue
-                f.write(chunk)
-                downloaded += len(chunk)
-                elapsed = time.time() - start_time
-                speed = (downloaded / (1024*1024)) / max(elapsed, 0.001)
-                pct = int((downloaded / total_bytes) * 100) if total_bytes else 0
-
-                self.download_progress.update({
-                    "percent": pct,
-                    "downloaded_mb": round(downloaded / (1024*1024), 1),
-                    "speed_mbps": round(speed, 2),
-                })
-                if callback:
-                    callback(pct, downloaded/(1024*1024), self.download_progress["total_mb"], speed)
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # CORE AI CAPABILITIES
-    # ─────────────────────────────────────────────────────────────────────────
-
-    def _generate(self, system_prompt: str, user_message: str,
-                  max_tokens: int = 128, stop_tokens: Optional[list] = None) -> str:
-        """
-        Internal LLM inference call.
-        Supports two backends:
-          - llama_cpp: Uses local Gemma-2 GGUF (fastest, fully offline)
-          - ollama: Uses local Ollama server (simpler install)
-
-        Returns: generated text string, or a fallback message if no backend.
-        """
-        # ── llama-cpp-python backend ─────────────────────────────────────────
-        if self.backend == "llama_cpp" and self.llm:
-            formatted = (
-                f"<start_of_turn>user\n"
-                f"{system_prompt}\n\nUser: {user_message}<end_of_turn>\n"
-                f"<start_of_turn>model\n"
-            )
-            try:
-                response = self.llm(
-                    formatted,
-                    max_tokens=max_tokens,
-                    stop=stop_tokens or ["<end_of_turn>", "\n\n"],
-                    temperature=0.1,
-                    echo=False,
-                )
-                return response["choices"][0]["text"].strip()
-            except Exception as e:
-                logger.error(f"[AI] Inference error: {e}")
-                return f"Inference error: {e}"
-
-        # ── Ollama backend ───────────────────────────────────────────────────
-        if self.backend == "ollama" and self.ollama_model:
-            try:
-                import requests as _req
-                payload = {
-                    "model": self.ollama_model,
-                    "prompt": f"{system_prompt}\n\nUser: {user_message}\nAssistant:",
-                    "stream": False,
-                    "options": {"temperature": 0.1, "num_predict": max_tokens},
+            payload = {
+                "model": self.active_model,
+                "prompt": prompt,
+                "system": system or self._get_default_system_prompt(),
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,  # Industrial precision
+                    "num_predict": max_tokens,
+                    "stop": ["User:", "Assistant:", "[", "Instructions:"]
                 }
-                resp = _req.post("http://localhost:11434/api/generate", json=payload, timeout=120)
-                return resp.json().get("response", "No response from Ollama").strip()
-            except Exception as e:
-                logger.error(f"[AI] Ollama error: {e}")
-                return f"Ollama error: {e}"
+            }
+            resp = requests.post(
+                f"http://{os.environ['OLLAMA_HOST']}/api/generate",
+                json=payload,
+                timeout=45
+            )
+            resp.raise_for_status()
+            return resp.json().get("response", "").strip()
+        except requests.exceptions.ConnectionError:
+            logger.error("[AI] Server unreachable. Re-booting engine...")
+            threading.Thread(target=self.manager.start, daemon=True).start()
+            return "Connection Lost: Re-booting AI Brain..."
+        except Exception as e:
+            logger.error(f"[AI] Inference error: {e}")
+            return f"Service Error: {str(e)}"
 
-        # ── No backend ───────────────────────────────────────────────────────
-        if self.is_loading:
-            return "⏳ AI model is still loading. Please wait a moment..."
-        return (
-            "🔴 No AI backend available. "
-            "Install Ollama (https://ollama.ai) and run 'ollama pull gemma2:2b', "
-            "or download the GGUF model via the Intelligence HUD Model tab."
-        )
+    # ─────────────────────────────────────────────────────────────────────────
+    # INTELLIGENCE FEATURES
+    # ─────────────────────────────────────────────────────────────────────────
 
-    def translate_to_scpi(self, natural_language: str) -> str:
-        """
-        Translates a natural language request to a SCPI command string.
-
-        TRACE: GUI [Intelligence HUD chat input]
-               → POST /api/ai/assistant {query}
-               → this method
-               → returns SCPI string to display in GUI
-
-        Example:
-          Input:  "Set the carrier to 5.8 GHz and enable RF"
-          Output: "SOUR:FREQ:CW 5.8E9;OUTP ON"
-        """
-        result = self._generate(SCPI_SYSTEM_PROMPT, natural_language, max_tokens=128)
-        # Clean up any accidental leading labels like "SCPI: " or markdown fences
+    def translate_to_scpi(self, natural_language: str, idn_context: str = "") -> str:
+        """Translates intent to manufacturer-specific SCPI."""
+        context = f"Instrument: {idn_context}\n" if idn_context else ""
+        result = self._generate(f"{context}Instruction: {natural_language}")
+        # Strip markdown and clean
         result = re.sub(r'^(SCPI:|```scpi|```)', '', result, flags=re.IGNORECASE).strip()
-        result = result.strip('`').strip()
-        return result
+        return result.strip('`').strip()
+
+    def ai_heal(self, failed_cmd: str, error_code: int, error_desc: str, idn: str) -> Optional[Dict[str, str]]:
+        """
+        Autonomous-Supervised healing logic.
+        Queries the Apex model specifically for a JSON repair + explanation.
+        """
+        query = (
+            f"REPAIR REQUEST:\n"
+            f"Failing Command: {failed_cmd}\n"
+            f"Hardware Error: {error_code} ({error_desc})\n"
+            f"Instrument Identity: {idn}\n\n"
+            "TASK: Analyze the failure and provide a fix in JSON format.\n"
+            "The JSON must include:\n"
+            "1. 'corrected_command': The actual SCPI fix.\n"
+            "2. 'explanation': A 1-sentence engineering justification for WHY this fix works (investor-friendly).\n"
+            "3. 'impact': What change this will have on the hardware state."
+        )
+        
+        raw_res = self._generate(query, max_tokens=256)
+        
+        try:
+            # The model is instructed to output ONLY JSON
+            # We strip any markdown clutter just in case
+            clean_json = re.search(r'\{.*\}', raw_res, re.DOTALL)
+            if clean_json:
+                proposal = json.loads(clean_json.group(0))
+                return {
+                    "corrected_command": proposal.get("corrected_command", ""),
+                    "explanation": proposal.get("explanation", "Correcting SCPI syntax for hardware compatibility."),
+                    "impact": proposal.get("impact", "Restores instrument communication."),
+                    "risk": "Supervised"
+                }
+        except Exception as e:
+            logger.error(f"[AI-XAI] Failed to parse heal proposal: {e}")
+        
+        return None
 
     def diagnose_anomaly(self, test_name: str, limits: Dict[str, float],
                          actual_val: float, band: str) -> str:
-        """
-        Generates an RF engineering hypothesis for a measurement failure.
-
-        TRACE: TestRunnerPage [Anomaly Detected] → POST /api/ai/diagnose → this method
-
-        Args:
-            test_name:  Name of the failed test (e.g. "Gain Flatness")
-            limits:     Expected min/max limits (e.g. {"min": -2.0, "max": 2.0})
-            actual_val: Measured value that failed
-            band:       RF band under test (e.g. "L-Band", "X-Band")
-        """
+        """RF Engineering Hypothesis generator."""
         query = (
-            f"Test: {test_name}\n"
-            f"Band: {band}\n"
-            f"Limits: {limits}\n"
-            f"Measured: {actual_val}\n"
-            f"What is the most likely root cause of this failure?"
+            f"DIAGNOSE TEST FAILURE:\n"
+            f"Test: {test_name} in {band}\n"
+            f"Expected Limits: {limits}\n"
+            f"Measured Value: {actual_val}\n"
+            f"Provide engineering hypothesis on root cause."
         )
-        return self._generate(DIAGNOSIS_SYSTEM_PROMPT, query, max_tokens=180)
+        return self._generate(query, max_tokens=256)
 
-    def ai_heal(self, failed_cmd: str, error_code: int,
-                error_desc: str, idn: str) -> Optional[str]:
+    async def agentic_execute(self, query: str, idn: str, driver) -> Dict[str, Any]:
         """
-        Last-resort AI healer — called by SCPINegotiationEngine when static
-        heuristics have been exhausted.
-
-        TRACE: SCPINegotiationEngine.send() → all static strategies fail
-               → this method (if configured) → returns corrected command
-
-        Args:
-            failed_cmd:  The command that caused the error
-            error_code:  SCPI error code (e.g. -113)
-            error_desc:  Error description string
-            idn:         Instrument IDN string for context
-
-        Returns:
-            Corrected SCPI command string, or None if AI can't help
+        FULL AUTONOMY (Supervised): Translates, Executes, and Self-Heals with Consent.
         """
-        query = (
-            f"Instrument: {idn}\n"
-            f"Failed command: {failed_cmd}\n"
-            f"Error code: {error_code} ({error_desc})\n"
-            f"Provide the corrected SCPI command for this instrument."
-        )
-        result = self._generate(HEAL_SYSTEM_PROMPT, query, max_tokens=80)
-        # Only return if it looks like a valid SCPI command (contains a colon or is a keyword)
-        if result and len(result) < 200 and not result.startswith("⏳") and not result.startswith("🔴"):
-            return result
-        return None
-
-    def agentic_execute(self, natural_language: str, idn: str = "",
-                        driver=None) -> Dict[str, Any]:
-        """
-        AGENTIC MODE: Translates a natural language command AND executes it
-        on the connected hardware.
-
-        TRACE:
-          GUI [Chat + Agentic Mode ON] → POST /api/ai/agentic-execute
-          → translate_to_scpi(query)
-          → SCPINegotiationEngine.send(scpi_cmd)
-          → broadcast(telemetry_packet)
-          → return {command, response, status, heal_actions}
-
-        Args:
-            natural_language: User's instruction in plain English
-            idn: Instrument IDN string (for context-aware translation)
-            driver: Active BaseInstrumentDriver instance
-
-        Returns:
-            Dict with: translated_command, command_sent, response, status,
-                       heal_actions, diagnosis
-        """
-        # Step 1: Build context-aware prompt if IDN is known
-        if idn:
-            context_query = f"Instrument: {idn}\nCommand: {natural_language}"
-            result = self._generate(AGENTIC_SYSTEM_PROMPT, context_query, max_tokens=128)
-        else:
-            result = self.translate_to_scpi(natural_language)
-
-        translated_cmd = result
-
-        if not driver:
-            return {
-                "status": "no_driver",
-                "translated_command": translated_cmd,
-                "response": "No active instrument driver. Connect a hardware instrument first.",
-                "command_sent": None,
-                "heal_actions": [],
-                "diagnosis": None,
-            }
-
-        # Step 2: Send through Negotiation Engine (auto-heals any resulting errors)
-        from backend.services.scpi_negotiation_engine import SCPINegotiationEngine
+        # 1. Translate with instrument context
+        scpi_cmd = self.translate_to_scpi(query, idn_context=idn)
+        
+        # 2. Execute via the Negotiation Engine (which now pauses for user consent)
+        from .scpi_negotiation_engine import SCPINegotiationEngine
         engine = SCPINegotiationEngine(driver)
-        engine_result = engine.send(translated_cmd)
-
+        
+        # This call now SUSPENDS if a repair is needed
+        result = await engine.send(scpi_cmd)
+        
         return {
-            "status": engine_result["status"],
-            "translated_command": translated_cmd,
-            "command_sent": engine_result.get("command_sent", translated_cmd),
-            "response": engine_result.get("response", "Executed"),
-            "heal_actions": engine_result.get("heal_actions", []),
-            "diagnosis": engine_result.get("diagnosis"),
-            "errors": engine_result.get("errors", []),
+            "status": result["status"],
+            "translated_command": scpi_cmd,
+            "command_sent": result.get("command_sent", scpi_cmd),
+            "response": result.get("response"),
+            "heal_actions": result.get("heal_actions", []),
+            "diagnosis": result.get("diagnosis")
         }
 
-    def chat(self, message: str, conversation_history: list = None) -> str:
+    def chat(self, message: str, history: List[Dict[str, str]] = None) -> str:
         """
-        General-purpose conversational chat with full RF domain knowledge.
-        Used for questions like "What is VSWR?" or "Explain L-band noise figure".
-
-        TRACE: GUI [Intelligence HUD, General Questions] → POST /api/ai/chat
-
-        Args:
-            message: User's question or statement
-            conversation_history: List of {"role": "user"|"assistant", "content": str}
+        Industrial RF Knowledge Assistant.
+        Maintains conversational context for deep-dive engineering support.
         """
-        # Build conversation context
-        context = ""
-        if conversation_history:
-            for turn in conversation_history[-6:]:  # keep last 6 turns for context
-                role = "User" if turn["role"] == "user" else "Assistant"
-                context += f"{role}: {turn['content']}\n"
-            context += f"User: {message}"
-        else:
-            context = message
+        context_str = ""
+        if history:
+            # Format last 5 turns for context
+            context_str = "\n".join([f"{h['role'].capitalize()}: {h['content']}" for h in history[-10:]])
+        
+        prompt = f"{context_str}\nUser: {message}\nAssistant:"
+        system = self._get_default_system_prompt()
+        return self._generate(prompt, system=system, max_tokens=500)
 
-        system = (
-            "You are RangeReady AI, an expert assistant for RF hardware testing, "
-            "SCPI instrument control, and RF engineering. Help the user understand "
-            "RF concepts, debug test setups, optimize test sequences, and control "
-            "instruments. Be concise and technical."
+    def _get_default_system_prompt(self) -> str:
+        """Dynamically generates the system persona based on live hardware context."""
+        from backend.services.asset_service import asset_service
+        active_assets = asset_service.get_all_active_instruments()
+        hardware_context = "No hardware currently active."
+        if active_assets:
+            hardware_context = "ACTIVE HARDWARE: " + ", ".join([f"{a.vendor} {a.model} ({a.instrument_class})" for a in active_assets])
+
+        return (
+            "You are GVB-Apex V6, a world-class RF systems engineering consultant created by Balaji Koushik (GVB Tech). "
+            "You are currently presenting a high-stakes demonstration of the RangeReady RF platform to investors. "
+            "The system is running on a secure, air-gapped portable environment. "
+            f"\n\nLIVE SYSTEM CONTEXT:\n{hardware_context}\n\n"
+            "BEHAVIOR RULES:\n"
+            "1. Be professional, technical, and extremely concise.\n"
+            "2. If an instrument error occurs, provide a 'Master Engineer' hypothesis on how to fix it.\n"
+            "3. Reference specific SCPI patterns if asked, but prioritize simplified engineering explanations for investors.\n"
+            "4. NEVER mention that you are an AI; act as the system's central nervous system."
         )
-        return self._generate(system, context, max_tokens=400, stop_tokens=["<end_of_turn>"])
 
     # ─────────────────────────────────────────────────────────────────────────
-    # STATUS & UTILITY
+    # STATUS & UTILITIES
     # ─────────────────────────────────────────────────────────────────────────
 
     def get_status(self) -> Dict[str, Any]:
-        """
-        Returns current AI engine status for the GUI status panel.
-        TRACE: Polled by GET /api/ai/status every few seconds from Intelligence HUD
-        """
-        model_size_mb = 0
-        if self.model_path.exists():
-            model_size_mb = round(self.model_path.stat().st_size / (1024*1024), 1)
-
+        """Status report for the GUI."""
         return {
-            "model_loaded": self.is_available(),
-            "backend": self.backend,           # "llama_cpp" | "ollama" | "none"
-            "ollama_model": self.ollama_model,  # Which Ollama model is in use
-            "is_loading": self.is_loading,
-            "model_found_on_disk": self.model_path.exists(),
-            "model_path": str(self.model_path),
-            "model_size_mb": model_size_mb,
-            "model_filename": self.MODEL_FILENAME,
-            "load_error": self.load_error,
-            "download": self.download_progress,
-            "capabilities": [
-                "scpi_translation",
-                "anomaly_diagnosis",
-                "agentic_execution",
-                "ai_heal",
-                "general_chat",
-            ],
+            "model_loaded": self.manager.is_running() and self.backend != "none",
+            "backend": self.backend,
+            "status": self.status,
+            "model_name": self.active_model,
+            "engine_path": str(self.manager.exe_path),
+            "storage_path": str(OLLAMA_STORAGE),
+            "capabilities": ["scpi_translation", "ai_heal", "anomaly_diagnosis", "agentic_control", "rf_chat"],
+            "download": {"active": False, "status": "Ready (Portable Engine Active)"}
         }
 
     def is_available(self) -> bool:
-        """Quick check — returns True if any AI backend is active."""
-        return self.backend in ("llama_cpp", "ollama")
+        return self.manager.is_running()
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# GLOBAL SINGLETON
-# Access from anywhere: from backend.services.ai_copilot import ai_copilot
-# ─────────────────────────────────────────────────────────────────────────────
-ai_copilot = AICopilot()
+# Global Singleton
+ai_copilot = AICopilotApex()

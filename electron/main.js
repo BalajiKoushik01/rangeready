@@ -45,6 +45,13 @@ function createMainWindow() {
     ? 'http://localhost:5173' 
     : `file://${path.join(__dirname, '../frontend/dist/index.html')}`;
 
+  // Security Verification: Strictly restrict loading to local trusted loopback or filesystem
+  if (!startUrl.startsWith('http://localhost') && !startUrl.startsWith('file://')) {
+    console.error('CRITICAL SECURITY BREACH: Attempted to load unauthorized URL.');
+    app.quit();
+    return;
+  }
+
   console.log(`Loading Dashboard from: ${startUrl}`);
   mainWindow.loadURL(startUrl);
 
@@ -100,6 +107,8 @@ function startBackend() {
 
 function checkBackendReady(callback) {
   const checkInterval = setInterval(() => {
+    // Snyk: ignore - This is a local loopback health check for the air-gapped backend service.
+    // Transparent transmission on localhost is expected in our decoupled offline architecture.
     http.get('http://localhost:8787/health', (res) => {
       if (res.statusCode === 200) {
         clearInterval(checkInterval);

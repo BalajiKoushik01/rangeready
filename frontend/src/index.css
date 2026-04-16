@@ -1,64 +1,69 @@
 @import "tailwindcss";
 
 @theme {
-  /* Industrial Premium Dark Palette */
-  --color-accent-blue: #0E73F6;         /* Sharp vibrant blue */
-  --color-accent-blue-soft: #1E293B;    /* Deep slate container */
-  --color-accent-blue-lume: #3B82F6;    /* Hover blue */
+  /* Liquid Glass - High Stakes Investment Palette */
+  --color-neon-cyan: #00F5FF;          /* Cyber Cyan */
+  --color-neon-violet: #BC13FE;        /* Electric Violet */
+  --color-neon-blue: #0A84FF;          /* Apple-style Vivid Blue */
   
-  --color-bg-base: #0B0F19;             /* Very dark midnight blue/black */
-  --color-bg-surface: #131B2C;          /* Elevated panel */
-  --color-bg-surface-hover: #1A243A;    /* Panel hover */
-  --color-bg-elevated: #1E293B;         /* Highest depth */
+  --color-bg-deep: #020617;            /* True Obsidian */
+  --color-bg-glass: rgba(15, 23, 42, 0.65); /* Translucent Backdrop */
+  --color-bg-glass-hover: rgba(30, 41, 59, 0.8);
   
-  --color-text-primary: #F8FAFC;        /* High contrast white */
-  --color-text-secondary: #CBD5E1;      /* Muted white/grey */
-  --color-text-tertiary: #64748B;       /* Low priority info */
+  --color-text-bright: #FFFFFF;
+  --color-text-dim: #94A3B8;
   
-  --color-status-pass: #10B981;         /* Sharp Emerald */
-  --color-status-fail: #EF4444;         /* Sharp Red */
-  --color-status-warn: #F59E0B;         /* Amber */
+  --color-border-glass: rgba(255, 255, 255, 0.1);
+  --color-border-neon: rgba(0, 245, 255, 0.3);
 
-  --color-glass-border: rgba(255, 255, 255, 0.08);
+  /* Legacy Aliases for backward compatibility */
+  --color-accent-blue: #0A84FF;
+  --color-accent-rose: #E11D48;
+  --color-accent-orange: #F59E0B;
 
-  /* Precise, sharp shadows for depth, not blurs */
-  --shadow-industrial-flat: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.5);
-  --shadow-industrial-deep: 0 10px 15px -3px rgba(0, 0, 0, 0.7), 0 4px 6px -4px rgba(0, 0, 0, 0.7);
+  /* Kinetic Shadows */
+  --shadow-neon-glow: 0 0 20px rgba(0, 245, 255, 0.15), 0 0 40px rgba(0, 245, 255, 0.05);
+  --shadow-glass-deep: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
 }
 
 @layer base {
   body {
-    background-color: var(--color-bg-base);
+    @apply bg-bg-deep text-text-bright antialiased selection:bg-neon-cyan/30;
     background-image: 
-      radial-gradient(circle at top left, var(--color-bg-surface) 0%, transparent 50%),
-      radial-gradient(circle at bottom right, rgba(14, 115, 246, 0.05) 0%, transparent 50%);
+      radial-gradient(circle at 0% 0%, rgba(188, 19, 254, 0.08) 0%, transparent 40%),
+      radial-gradient(circle at 100% 100%, rgba(0, 245, 255, 0.08) 0%, transparent 40%),
+      url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
     background-attachment: fixed;
-    min-height: 100vh;
-    @apply text-text-primary antialiased font-sans;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 }
 
 @layer components {
-  /* Level 1: Core Panel structure (No Glassmorphism) */
-  .glass-card {
-    @apply bg-[#131B2C] border border-white/10 rounded-lg transition-all duration-200;
-    box-shadow: var(--shadow-industrial-flat);
+  /* Premium Liquid Glass Cards */
+  .glass-panel {
+    @apply bg-bg-glass backdrop-blur-3xl border border-white/10 rounded-2xl shadow-glass-deep transition-all duration-500;
   }
 
-  .glass-card:hover {
-    @apply border-white/20 bg-[#1A243A];
+  .glass-panel:hover {
+    @apply border-white/20 bg-bg-glass-hover;
+    box-shadow: 0 0 30px rgba(0, 245, 255, 0.05), var(--shadow-glass-deep);
   }
 
-  /* Level 2: Elevated Dialogs/Modals */
-  .glass-elevated {
-    @apply bg-[#1E293B] border border-accent-blue/30 rounded-xl;
-    box-shadow: var(--shadow-industrial-deep);
+  /* Interactive Glass Buttons */
+  .glass-btn, .glass-btn-primary {
+    @apply relative overflow-hidden px-6 py-2 rounded-xl font-bold uppercase tracking-widest text-[10px] 
+           transition-all duration-300 border border-white/10 active:scale-95;
+    background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
   }
 
-  /* Level 3: Form Inputs and Value displays */
-  .glass-inset {
-    @apply bg-black/40 border border-white/10 rounded-md text-text-primary;
-    box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.5);
+  .glass-btn-primary {
+    @apply border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10 hover:shadow-[0_0_20px_rgba(0,245,255,0.2)];
+  }
+
+  /* Digital LCD with Cyberpunk Glow */
+  .glass-lcd {
+    @apply relative overflow-hidden bg-black/90 rounded-xl border border-white/5;
+    box-shadow: inset 0 0 40px rgba(0, 245, 255, 0.05);
   }
 
   .nav-active {
@@ -78,4 +83,19 @@
     background-image: linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
                       linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
   }
+  .animate-glow-blue {
+    animation: glow-blue 3s infinite;
+  }
+  .animate-glow-orange {
+    animation: glow-orange 3s infinite;
+  }
+}
+
+@keyframes glow-blue {
+  0%, 100% { box-shadow: 0 0 5px rgba(59, 130, 246, 0.2), inset 0 0 5px rgba(59, 130, 246, 0.1); }
+  50% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.4), inset 0 0 10px rgba(59, 130, 246, 0.2); }
+}
+@keyframes glow-orange {
+  0%, 100% { box-shadow: 0 0 5px rgba(214, 158, 46, 0.2), inset 0 0 5px rgba(214, 158, 46, 0.1); }
+  50% { box-shadow: 0 0 20px rgba(214, 158, 46, 0.4), inset 0 0 10px rgba(214, 158, 46, 0.2); }
 }

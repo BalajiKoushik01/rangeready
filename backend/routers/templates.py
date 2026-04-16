@@ -5,7 +5,7 @@ from ..models.test_session import TestTemplate, TemplateStep
 from typing import List, Annotated, Optional
 from pydantic import BaseModel
 
-router = APIRouter(prefix="/api/templates", tags=["Test Templates"])
+router = APIRouter(prefix="", tags=["Test Templates"])
 
 class StepCreate(BaseModel):
     name: str

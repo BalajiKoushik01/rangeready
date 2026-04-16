@@ -12,26 +12,76 @@ export const LaunchOverlay: React.FC = () => {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    const loadingSteps = [
-      'Initializing Matrix...',
-      'Linking VISA Resource Layer...',
-      'Loading OSLT Coefficients...',
-      'Verifying ISRO-PHASE-3 Protocol...',
-      'System Ready.'
-    ];
     let currentStep = 0;
-    const interval = setInterval(() => {
-      if (currentStep < loadingSteps.length - 1) {
+    const loadingSteps = [
+      'INIT_MATRIX // BOOTSTRAPPING...',
+      'ATTACHING_SQLITE_INDUSTRIAL_DB...',
+      'SYNCHRONIZING_AI_COPILOT_APEX...',
+      'ARMING_HARDWARE_DISCOVERY_SENTRY...',
+      'SYSTEM_READY // SECURE_BOOT_OK.'
+    ];
+
+    const checkHealth = async () => {
+      try {
+        const res = await fetch(`http://127.0.0.1:8787/health`);
+        if (!res.ok) return false;
+        const data = await res.json();
+
+        const isWarming = data.warming_up === true;
+        const diagnostics = data.diagnostics || {};
+
+        const dbReady = diagnostics.database?.status === 'healthy' || isWarming;
+        const aiStatus = diagnostics.ai?.status;
+        const aiReady = (aiStatus === 'ready' || isWarming || !aiStatus || aiStatus === 'offline' || aiStatus === 'stand-by');
+
+        let p = 10;
+        if (data.status === 'healthy' || data.status === 'degraded') p += 20;
+        if (dbReady) p += 35;
+        if (aiReady || p >= 65) p = 100;
+
+        setProgress(p);
+
+        if (p === 100) {
+            const aiLabel = aiStatus === 'ready' ? 'AI ONLINE' : 'AI STAND-BY';
+            setLoadingText(`SYSTEM_READY // ${aiLabel}.`);
+            setTimeout(() => setIsVisible(false), 800);
+            return true;
+        } else if (p > 60) {
+            setLoadingText(loadingSteps[3]);
+        } else if (p > 30) {
+            setLoadingText(loadingSteps[2]);
+        } else {
+            setLoadingText(loadingSteps[1]);
+        }
+      } catch (_e) {
+        return false;
+      }
+      return false;
+    };
+
+    const failSafeTimeout = setTimeout(() => {
+      if (isVisible) {
+        console.warn("LaunchOverlay: Healthy check timed out. Force-clearing overlay.");
+        setIsVisible(false);
+      }
+    }, 10000);
+
+    const interval = setInterval(async () => {
+      const isReady = await checkHealth();
+      if (!isReady && currentStep < loadingSteps.length - 2) {
         currentStep++;
         setLoadingText(loadingSteps[currentStep]);
         setProgress((currentStep / (loadingSteps.length - 1)) * 100);
-      } else {
+      } else if (isReady) {
         clearInterval(interval);
-        setTimeout(() => setIsVisible(false), 800);
+        clearTimeout(failSafeTimeout);
       }
-    }, 1200);
+    }, 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(failSafeTimeout);
+    };
   }, []);
 
   return (

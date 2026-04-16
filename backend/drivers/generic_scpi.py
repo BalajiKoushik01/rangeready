@@ -244,9 +244,17 @@ class GenericSCPIDriver(BaseInstrumentDriver):
             return True
 
         # Try Cached/Requested Port first
-        if self._connect_socket(self.address, search_port):
-            self._last_success_port = search_port
-            return True
+        max_retries = 2
+        for attempt in range(max_retries):
+            if self._connect_socket(self.address, search_port):
+                self._last_success_port = search_port
+                return True
+            time.sleep(0.5)
+
+        # LXI Standard Port for VXI-11 Device Core
+        VXI_11_PORT = 111
+        # HiSLIP (High-Speed LAN Instrument Protocol) standard port
+        HISLIP_PORT = 4880
 
         # Fallback to VXI-11 if socket failed OR if it's the specific LXI port
         if self._connect_vxi11(self.address):
@@ -273,7 +281,9 @@ class GenericSCPIDriver(BaseInstrumentDriver):
                 self._socket_write("*CLS")
                 print(f"[Generic-Socket] Connected: {self.idn}")
                 return True
-        except (socket.error, socket.timeout):
+        except (socket.error, socket.timeout) as e:
+            # Discovery failure is expected for some ports; log as debug to avoid noise
+            print(f"[Generic-Socket] Connection attempt to {address}:{port} failed: {e}")
             pass
         finally:
             if not self.is_connected and self.sock:
@@ -351,28 +361,46 @@ class GenericSCPIDriver(BaseInstrumentDriver):
             return self.vxi.ask(cmd)
         return ""
 
-    def execute(self, action: str, **kwargs) -> Any:
+    def execute(self, action: str, wait_opc: bool = False, **kwargs) -> Any:
         """
-        Industry-standard logical action execution.
+        Industry-standard logical action execution with optional OPC synchronization.
         """
         cmd = self._resolve_cmd(action, **kwargs)
         if cmd is None:
-            print(f"[Generic] No personality mapping for '{action}'. skipping.")
-            return None
+            # Fallback: if it's already a SCPI-like string, we send it anyway
+            if action.startswith("*") or ":" in action:
+                cmd = action
+            else:
+                print(f"[Generic] No personality mapping for '{action}'. skipping.")
+                return None
             
         if "?" in cmd:
-            return self.query(cmd)
+            res = self.query(cmd)
+            if wait_opc: self.wait_for_opc()
+            return res
         else:
             self.write(cmd)
+            if wait_opc:
+                success = self.wait_for_opc()
+                if not success:
+                    print(f"[Generic] OPC Timeout after '{cmd}'")
             return True
 
     def check_errors(self) -> List[str]:
+        """Polls the instrument error queue until empty (+0,"No error")."""
         errors = []
-        for _ in range(10):
-            err = self.query(self._resolve_cmd("query_error") or "SYST:ERR?")
-            if not err or '+0,"No error"' in err or err == "0":
+        if self.simulation: return []
+        
+        # Manufacturer standard: system error polling
+        err_cmd = self._resolve_cmd("query_error") or "SYST:ERR?"
+        for _ in range(10):  # Safety limit for flood prevention
+            try:
+                err = self.query(err_cmd)
+                if not err or '+0,"No error"' in err or err == "0" or "No error" in err:
+                    break
+                errors.append(err)
+            except Exception:
                 break
-            errors.append(err)
         return errors
 
     def wait_for_opc(self, timeout_ms: int = 10000) -> bool:
@@ -400,97 +428,127 @@ class GenericSCPIDriver(BaseInstrumentDriver):
     def sg_set_rf_output(self, state: bool) -> None:
         """TRACE: GUI RF Toggle → action='rf_on'/'rf_off' → SCPI → Hardware"""
         action = "rf_on" if state else "rf_off"
-        self.write(self._resolve_cmd(action))
-        self.check_errors()
-
-    def sg_set_am(self, state: bool, depth_pct: float = 30.0) -> None:
-        if state:
-            self.write(self._resolve_cmd("am_depth", value=depth_pct))
-            self.write(self._resolve_cmd("am_on"))
-        else:
-            self.write(self._resolve_cmd("am_off"))
-        self.check_errors()
-
-    def sg_set_fm(self, state: bool, deviation_hz: float = 1000.0) -> None:
-        if state:
-            self.write(self._resolve_cmd("fm_dev", deviation_hz))
-            self.write(self._resolve_cmd("fm_on"))
-        else:
-            self.write(self._resolve_cmd("fm_off"))
-        self.check_errors()
-
-    def sg_set_pulse_modulation(self, state: bool) -> None:
-        action = "pulse_on" if state else "pulse_off"
-        self.write(self._resolve_cmd(action))
-        self.check_errors()
-
-    def sg_set_pulse_params(self, period_s: float, width_s: float) -> None:
-        self.write(self._resolve_cmd("pulse_period", period_s))
-        self.write(self._resolve_cmd("pulse_width", width_s))
-        self.check_errors()
-
-    def sg_set_sweep(self, start_hz: float, stop_hz: float, step_hz: float = 1e6, dwell_s: float = 0.01) -> None:
-        self.write(self._resolve_cmd("sweep_start", start_hz))
-        self.write(self._resolve_cmd("sweep_stop", stop_hz))
-        self.write(self._resolve_cmd("sweep_step", step_hz))
-        self.write(self._resolve_cmd("sweep_dwell", dwell_s))
-        self.check_errors()
-
-    def sa_set_center_span(self, center_hz: float, span_hz: float) -> None:
-        self.write(self._resolve_cmd("sa_center", value=center_hz))
-        self.write(self._resolve_cmd("sa_span", value=span_hz))
-        self.check_errors()
-
-    def sa_set_reference_level(self, ref_dbm: float) -> None:
-        self.write(self._resolve_cmd("sa_ref_level", value=ref_dbm))
+        # Manufacturer-grade: wait for OPC to ensure hardware relay stability
+        self.execute(action, wait_opc=True)
         self.check_errors()
 
     def get_trace(self):
         """Standardized trace fetch with binary fallback for speed."""
         try:
             return self.get_trace_binary()
-        except:
-            return self.execute("sa_trace")
+        except Exception as e:
+            print(f"[Generic] Binary trace failed, falling back to ASCII: {e}")
+            # ASCII fallback for legacy units that don't support REAL,32
+            return self.execute("sa_trace", value=1)
+
+    def sg_set_am(self, state: bool, depth_pct: float = 30.0) -> None:
+        if state:
+            self.write(self._resolve_cmd("am_depth", value=depth_pct))
+            self.execute("am_on", wait_opc=True)
+        else:
+            self.execute("am_off", wait_opc=True)
+        self.check_errors()
+
+    def sg_set_fm(self, state: bool, deviation_hz: float = 1000.0) -> None:
+        if state:
+            self.write(self._resolve_cmd("fm_dev", value=deviation_hz))
+            self.execute("fm_on", wait_opc=True)
+        else:
+            self.execute("fm_off", wait_opc=True)
+        self.check_errors()
+
+    def sg_set_pulse_modulation(self, state: bool) -> None:
+        action = "pulse_on" if state else "pulse_off"
+        self.execute(action, wait_opc=True)
+        self.check_errors()
+
+    def sg_set_pulse_params(self, period_s: float, width_s: float) -> None:
+        self.write(self._resolve_cmd("pulse_period", value=period_s))
+        self.write(self._resolve_cmd("pulse_width", value=width_s))
+        self.execute("*OPC?", query=True) # Manual sync
+        self.check_errors()
+
+    def sg_set_sweep(self, start_hz: float, stop_hz: float, step_hz: float = 1e6, dwell_s: float = 0.01) -> None:
+        self.write(self._resolve_cmd("sweep_start", value=start_hz))
+        self.write(self._resolve_cmd("sweep_stop", value=stop_hz))
+        self.write(self._resolve_cmd("sweep_step", value=step_hz))
+        self.write(self._resolve_cmd("sweep_dwell", value=dwell_s))
+        self.execute("*OPC?", query=True)
+        self.check_errors()
+
+    def sa_set_center_span(self, center_hz: float, span_hz: float) -> None:
+        self.write(self._resolve_cmd("sa_center", value=center_hz))
+        self.execute("sa_span", value=span_hz, wait_opc=True)
+        self.check_errors()
+
+    def sa_set_reference_level(self, ref_dbm: float) -> None:
+        self.execute("sa_ref_level", value=ref_dbm, wait_opc=True)
+        self.check_errors()
 
     def get_trace_binary(self):
         """
-        Ultra-High Speed: Fetches data in binary block format (REAL,32).
-        Decreases bus traffic by 60%+ compared to ASCII.
+        Industrial High-Performance: Resilient Binary Block fetch.
+        Supports standard SCPI #ABC... format with auto-header detection.
         """
         if self.simulation:
             import random
             return [random.uniform(-100, -10) for _ in range(1001)]
 
-        # 1. Switch instrument to binary mode
-        self.write("FORM:DATA realm,32")
-        
-        # 2. Query trace
-        cmd = self._resolve_cmd("sa_trace") or "TRAC:DATA? TRACE1"
-        self.write(cmd)
-        
-        # 3. Read binary block manually for speed
-        # Header is like #41001 (4 digits for 1001 bytes)
-        header = self.sock.recv(2) # Read # and digits_count
-        if header[0:1] != b'#':
-            raise ValueError("Invalid binary block header")
-        
-        num_digits = int(header[1:2])
-        length_bytes = int(self.sock.recv(num_digits))
-        
-        # Read full block
-        raw_data = b""
-        while len(raw_data) < length_bytes:
-            chunk = self.sock.recv(min(length_bytes - len(raw_data), 16384))
-            if not chunk: break
-            raw_data += chunk
+        try:
+            import numpy as np
             
-        # Final newline
-        self.sock.recv(1)
-        
-        # Unpack IEEE 4 byte floats (32-bit real)
-        import struct
-        points = len(raw_data) // 4
-        return list(struct.unpack(f"{points}f", raw_data))
+            # 1. Ensure binary mode (IEEE 488.2 High-Speed)
+            self.write("FORM REAL,32")
+            
+            # 2. Query trace
+            cmd = self._resolve_cmd("sa_trace", value=1) or "TRAC:DATA? TRACE1"
+            self.write(cmd)
+            
+            # 3. Read Header (#N<digits>)
+            # Some instruments might have a slight delay or send a newline before the header
+            while True:
+                char = self.sock.recv(1)
+                if char == b'#':
+                    break
+                if not char:
+                    raise IOError("Instrument closed connection while waiting for binary header.")
+                
+            digits_count_char = self.sock.recv(1)
+            if not digits_count_char.isdigit():
+                # Handle #0<data>\n format (indefinite length)
+                if digits_count_char == b'0':
+                    # Read until newline
+                    buf = b""
+                    while not buf.endswith(b"\n"):
+                        buf += self.sock.recv(4096)
+                    return np.frombuffer(buf[:-1], dtype='>f4').tolist()
+                raise ValueError(f"Invalid digits count in SCPI header: {digits_count_char}")
+
+            digits_count = int(digits_count_char)
+            total_bytes = int(self.sock.recv(digits_count))
+            
+            # 4. Zero-Allocation Read
+            buffer = bytearray(total_bytes)
+            view = memoryview(buffer)
+            pos = 0
+            while pos < total_bytes:
+                n = self.sock.recv_into(view[pos:], min(total_bytes - pos, 65536))
+                if n == 0: break
+                pos += n
+                
+            # Clear trailing newline if present
+            try:
+                self.sock.settimeout(0.1)
+                self.sock.recv(1)
+            except: pass
+            finally: self.sock.settimeout(self.timeout_s)
+            
+            # 5. Native Conversion (SCPI REAL,32 is Big-Endian)
+            return np.frombuffer(buffer, dtype='>f4').tolist()
+            
+        except Exception as e:
+            print(f"[Generic] Binary TRACE error: {e}")
+            raise
 
     def set_frequency(self, start: float, stop: float = 0) -> None:
         """Standardized frequency setter required by BaseInstrumentDriver."""

@@ -5,10 +5,19 @@
  * TARGET: All wrapped UI components (Dashboard, Sidebar).
  * DESCRIPTION: Manages toggles for AI Copilot, Simulation overrides, and global notification flags.
  */
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import type { RFBand } from '../types';
+
+export type ConnStatus = 'connected' | 'connecting' | 'offline';
+
+export type SystemStatus = {
+  keysight_sg: ConnStatus;
+  keysight_sa: ConnStatus;
+  rs_sg: ConnStatus;
+  rs_sa: ConnStatus;
+};
 
 export type SystemStateContextType = {
   activeBand: RFBand;
@@ -21,6 +30,8 @@ export type SystemStateContextType = {
   setIsHardwareBusy: (busy: boolean) => void;
   busyMessage: string;
   setBusyMessage: (msg: string) => void;
+  systemStatus: SystemStatus;
+  setInstrumentStatus: (instrument: keyof SystemStatus, status: ConnStatus) => void;
 };
 
 export const SystemStateContext = createContext<SystemStateContextType | undefined>(undefined);
@@ -31,14 +42,25 @@ export const SystemStateProvider: React.FC<{ children: ReactNode }> = ({ childre
   const [pendingBand, setPendingBand] = useState<RFBand | null>(null);
   const [isHardwareBusy, setIsHardwareBusy] = useState<boolean>(false);
   const [busyMessage, setBusyMessage] = useState<string>('');
+  const [systemStatus, setSystemStatus] = useState<SystemStatus>({
+    keysight_sg: 'offline',
+    keysight_sa: 'offline',
+    rs_sg: 'offline',
+    rs_sa: 'offline',
+  });
+
+  const setInstrumentStatus = (instrument: keyof SystemStatus, status: ConnStatus) => {
+    setSystemStatus(prev => ({ ...prev, [instrument]: status }));
+  };
 
   const value = React.useMemo(() => ({
     activeBand, setActiveBand,
     isAiMode, setIsAiMode,
     pendingBand, setPendingBand,
     isHardwareBusy, setIsHardwareBusy,
-    busyMessage, setBusyMessage
-  }), [activeBand, setActiveBand, isAiMode, setIsAiMode, pendingBand, setPendingBand, isHardwareBusy, busyMessage]);
+    busyMessage, setBusyMessage,
+    systemStatus, setInstrumentStatus
+  }), [activeBand, setActiveBand, isAiMode, setIsAiMode, pendingBand, setPendingBand, isHardwareBusy, busyMessage, systemStatus]);
 
   return (
     <SystemStateContext.Provider value={value}>

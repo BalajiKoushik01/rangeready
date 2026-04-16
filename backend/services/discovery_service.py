@@ -8,7 +8,7 @@ DESCRIPTION: Periodically scans the subnet for new SCPI-compatible hardware and 
 """
 import asyncio
 import ifaddr
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from backend.services.broadcast import manager
 from backend.drivers.plugin_manager import PluginManager
 from backend.drivers.manifest_loader import ManifestLoader
@@ -20,18 +20,17 @@ import datetime
 
 
 class DiscoveryService:
-    """
     # Configuration for multi-port discovery universe
     PROBE_PORTS = [5025, 5024, 111, 49152] 
-    SCAN_TIMEOUT = 0.3
-    """
+    SCAN_TIMEOUT = 0.2 # Presentation Aggression: Faster probing
 
     def __init__(self):
         self._scanning = False
         self.active_subnets = []
+        self._last_known_goods = set() # Cache for confirmed IPs
 
     def refresh_subnets(self):
-        """Detects all local IPv4 subnets from active network interfaces."""
+        """Detects all local IPv4 subnets from active network interfaces (including 169.254.x.x)."""
         subnets = []
         adapters = ifaddr.get_adapters()
         for adapter in adapters:
@@ -41,6 +40,7 @@ class DiscoveryService:
                     subnet_prefix = ".".join(ip.ip.split(".")[:-1]) + "."
                     if subnet_prefix not in subnets:
                         subnets.append(subnet_prefix)
+                        print(f"[Discovery] Detected active subnet range: {subnet_prefix}0/24")
         self.active_subnets = subnets
         return subnets
 
@@ -137,6 +137,16 @@ class DiscoveryService:
         self._scanning = False
         return discovered
 
+    async def manual_discovery(self, ip: str) -> Optional[Dict[str, Any]]:
+        """Direct, single-IP interrogation bypass for mission-critical overrides."""
+        await self.broadcast_status(f"Initiating manual handshake for {ip}...", level="INFO")
+        res = await self._process_discovered_ip(ip)
+        if res:
+            await self.broadcast_status(f"Manual override successful. {ip} secured.", level="SUCCESS")
+        else:
+            await self.broadcast_status(f"Manual discovery failed for {ip}. Check Physical Connection.", level="ERROR")
+        return res
+
     def _get_ips_to_scan(self) -> List[str]:
         """Gathers list of candidate IPs across all subnets, excluding blacklist."""
         ips = []
@@ -146,6 +156,13 @@ class DiscoveryService:
                 ip = f"{sn}{i}"
                 if ip not in blacklist:
                     ips.append(ip)
+        
+        # Prioritize Last Known Goods
+        for lkg in self._last_known_goods:
+            if lkg in ips:
+                ips.remove(lkg)
+                ips.insert(0, lkg)
+
         return ips
 
     async def _probe_network(self, ips: List[str]) -> List[str]:
@@ -164,12 +181,19 @@ class DiscoveryService:
 
         loop = asyncio.get_event_loop()
         import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=60) as executor: # Aggressive concurrency
             results = list(await loop.run_in_executor(
                 executor,
                 lambda: list(executor.map(check_ports, ips))
             ))
         return [ip for ip, ok in zip(ips, results) if ok]
+
+    async def handle_mdns_discovery(self, ip: str, port: int, idn: str):
+        """Callback triggered by the mDNS listener."""
+        logger.info(f"[mDNS] Rapid Handshake triggered for {ip}:{port}")
+        # Only process if not already confirmed recently
+        if ip not in self._last_known_goods:
+            await self._process_discovered_ip(ip)
 
     async def _process_discovered_ip(self, ip: str) -> Optional[Dict[str, Any]]:
         """Handshakes and identifies an instrument at a specific IP by scanning ports."""
@@ -197,47 +221,48 @@ class DiscoveryService:
 
             await self.broadcast_status(f"Handshaking with {ip}:{discovered_port}...", level="INFO")
             
-            # Discovery 2.0: Deep Interrogation
+            # Discovery 2.0: Deep Interrogation (The AI Profiler)
+            await self.broadcast_status(f"Analyzing {ip} manufacturer protocols...", level="INFO")
             personality = await self._interrogate_personality(driver)
             info = self._identify_instrument(idn)
             
             # Merge decoded personality into info
             info.update(personality)
-
-            if info["role"] != "Unknown":
-                # Industry Best Practice: Auto-Register into Database
-                instrument_id = self._auto_register_instrument(ip, discovered_port, info, idn)
-                
-                # Check if we should auto-activate or prompt
-                active_now = asset_service.get_active_instrument(info["role"])
-                
-                if not active_now:
-                    # Case 1: First device found → Auto-Activate
-                    await asset_service.activate_instrument(instrument_id)
-                    await self.broadcast_status(f"Auto-Activated {info['manufacturer']} {info['model']} at {ip}", level="SUCCESS")
-                    # Async initialization (Stateful)
-                    asyncio.create_task(self.initialize_instrument(ip, info["role"], info["manufacturer"]))
-                else:
-                    # Case 2: New device found while one is active → Prompt User
-                    await self.broadcast_discovery_prompt(instrument_id, ip, info)
-                    await self.broadcast_status(f"New {info['manufacturer']} detected at {ip}. Awaiting switch approval.", level="INFO")
-                
-                driver.disconnect()
-                return {"id": instrument_id, "status": "processed"}
+            await self.broadcast_status(f"Profile Secured: {info['manufacturer']} {info.get('model')} ({info.get('mode')} mode)", level="SUCCESS")
+            
+            # Industry Best Practice: Auto-Register into Database
+            instrument_id = self._auto_register_instrument(ip, discovered_port, info, idn)
+            self._last_known_goods.add(ip)
+            
+            # Check if we should auto-activate or prompt
+            active_now = asset_service.get_active_instrument(info["role"])
+            
+            if not active_now:
+                # Case 1: First device found → Auto-Activate
+                await asset_service.activate_instrument(instrument_id)
+                await self.broadcast_status(f"Auto-Activated {info['manufacturer']} {info['model']} at {ip}", level="SUCCESS")
+                # Async initialization (Stateful)
+                asyncio.create_task(self.initialize_instrument(ip, info["role"], info["manufacturer"]))
+            else:
+                # Case 2: New device found while one is active → Prompt User
+                await self.broadcast_discovery_prompt(instrument_id, ip, info)
+                await self.broadcast_status(f"New {info['manufacturer']} detected at {ip}. Awaiting switch approval.", level="INFO")
             
             driver.disconnect()
-            return None
-        except Exception:
+            return {"id": instrument_id, "status": "processed"}
+            
+        except Exception as e:
+            logger.error(f"[DISCOVERY] Critical failure interrogating {ip}: {e}")
             try: driver.disconnect()
             except: pass
             return None
 
+
     async def _interrogate_personality(self, driver) -> Dict[str, str]:
-        """Discovery 2.0: Queries mode and options to build personality profile."""
+        """Discovery 2.0: Queries mode and options to build personality profile using AI assistance."""
         try:
-            # 1. Decode Mode
+            # 1. Decode Mode (Legacy SCPI Check)
             mode = "Default"
-            # Try common mode queries
             for cmd in ["INST:SEL?", "INST?", "SYST:MODE?", "SOUR:FREQ:MODE?"]:
                 try:
                     res = driver.query(cmd).strip().replace('"', '')
@@ -248,6 +273,21 @@ class DiscoveryService:
                 
             # 2. Decode Options
             opts = driver.query("*OPT?").strip()
+            
+            # AI Profiler Bypass: If mode is unknown, ask the AI brain to hypothesize
+            if mode == "Default" or "Unknown" in mode:
+                from backend.services.ai_copilot import ai_copilot
+                if ai_copilot.is_available():
+                    idn = driver.idn
+                    log_msg = f"Unknown hardware behavior at {driver.address}. Consulting AI Profiler..."
+                    await self.broadcast_status(log_msg, level="INFO")
+                    
+                    guess = ai_copilot.translate_to_scpi(
+                        f"Analyze this instrument based on IDN: '{idn}'. Answer with ONLY 'Signal Generator', 'Spectrum Analyzer', or 'Network Analyzer'.",
+                        idn_context=idn
+                    )
+                    if guess and "Analyzer" in guess or "Generator" in guess:
+                        mode = f"AI Guess: {guess}"
             
             return {"mode": mode, "options": opts}
         except:
@@ -345,17 +385,28 @@ class DiscoveryService:
                 # Execute scan
                 await self.scan_network()
                 
-                # Adapt sleep interval based on connectivity
-                instruments = config_service.get_all_instruments()
-                has_sg = instruments.get("Signal Generator") and instruments.get("Signal Generator") != "AUTO"
-                has_sa = instruments.get("Spectrum Analyzer") and instruments.get("Spectrum Analyzer") != "AUTO"
+                # Big Day Strategy: Stop-After-One (if configured)
+                # We check the actual database via config_service context
+                primary_connected = False
+                try:
+                    # If we have at least one active instrument of any role, we might stop
+                    sg_ip = config_service.get_instrument_ip("Signal Generator")
+                    sa_ip = config_service.get_instrument_ip("Spectrum Analyzer")
+                    if sg_ip or sa_ip:
+                        primary_connected = True
+                except: pass
                 
-                interval = 5 if not (has_sg and has_sa) else 300
+                if config_service._config.get("discovery_stop_after_one", False) and primary_connected:
+                    await self.broadcast_status("Discovery Paused: Hardware secured. System locked for performance.", level="INFO")
+                    # We don't exit the loop, but we sleep much longer
+                    await asyncio.sleep(60)
+                    continue
+
+                interval = 5 if not primary_connected else 300
                 await asyncio.sleep(interval)
             except Exception as e:
                 print(f"Discovery Loop Error: {e}")
                 await asyncio.sleep(10)
-                self._scanning = False
 
 
 discovery_service = DiscoveryService()

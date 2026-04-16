@@ -20,15 +20,25 @@ from .database_base import Base
 
 def init_db():
     """
-    Idempotent database initializer.
-    
-    Creates all tables and seeds default hardware if empty.
+    Idempotent database initializer with surgical schema migration (V5.1).
     """
     from .models.test_session import TestSession, TestStep
     from .models.instrument import Instrument, InstrumentCalibration
+    from sqlalchemy import text, inspect
+    
+    # 1. Base table creation
     Base.metadata.create_all(bind=engine)
     
-    # Auto-seeding for first-run experience (Purged for Industrial Deployment)
+    # 2. Surgical Migration: Ensure 'command_map' exists in 'instruments'
+    # Required for the new GenericSCPIDriver Profiler.
+    inspector = inspect(engine)
+    columns = [c['name'] for c in inspector.get_columns("instruments")]
+    if "command_map" not in columns:
+        print("MIGRATION: Adding 'command_map' column to 'instruments' table...")
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE instruments ADD COLUMN command_map JSON DEFAULT '{}'"))
+    
+    # 3. Verify Health
     db = SessionLocal()
     try:
         # We start with an empty registry; hardware must be discovered via Ethernet.

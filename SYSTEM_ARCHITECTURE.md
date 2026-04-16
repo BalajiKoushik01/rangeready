@@ -12,7 +12,8 @@ The RangeReady platform is built using industry-standard Components designed for
 - **Web Framework**: FastAPI (Asynchronous REST API)
 - **Persistence**: DriverRegistry Singleton (Persistent Socket Management)
 - **Safety Layer**: Deterministic Hardware Mutex (Serialized Access)
-- **Instrumentation Communication**: Raw TCP/SCPI Bridge (Keysight & Rohde & Schwarz)
+- **Instrumentation Communication**: Raw TCP/SCPI Bridge with **SCPI Sentry** resilience layer.
+- **SCPI Negotiation Engine**: A 3-tier safety execution pipeline (Retry -> Fallback -> Heal) for high-stakes instrumentation.
 - **Data Processing**: NumPy (Digital Signal Processing & Trace Analysis)
 - **Database**: SQLite with SQLAlchemy ORM (Station Metadata & Test History)
 - **Real-time Synchronization**: WebSockets (Broadcast Service for live telemetry & Interlocks)
@@ -47,8 +48,11 @@ graph TD
 ## 3. Core Capabilities (V6.0)
 - **Deterministic Hardware Mutex**: Every hardware-mutating command is wrapped in a global `lock_and_broadcast` guard. This ensures only one command is processed by an instrument at any time, preventing internal bus collisions.
 - **Persistent Socket Management**: The `DriverRegistry` maintains active, warm sockets for all instruments. This eliminates the 50-100ms connection overhead for every command, enabling ultra-low latency control.
-- **Glass Console™ Real-time Interlock**: The UI automatically enters a "Hardware Busy" state when an interlock is held, preventing users from hammering the instrument front panel.
-- **Intelligent Auto-Discovery**: Automated network bus interrogation (Port 5025) with recursive identification for zero-configuration setup.
+- **The SCPI Sentry (Resilience Pipeline)**:
+    - **Tier 1 (Transient Retry)**: Sophisticated exponential backoff handler for dropped packets and bus timeouts.
+    - **Tier 2 (Protocol Fallback)**: Intelligent mapping of manufacturer-rejected commands to IEEE 488.2 standard SCPI headers.
+    - **Tier 3 (AI Healing)**: Real-time command rectification via the Apex AI engine, correcting syntax anomalies without operator intervention.
+- **Intelligent Auto-Discovery**: Automated network bus interrogation (Port 5025) with recursive identification, now supporting cross-subnet and APIPA scanning.
 
 ---
 

@@ -7,7 +7,7 @@ DESCRIPTION: Implements the low-level handshake logic to verify if a discovered 
 """
 import socket
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import struct
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,10 @@ class LXIDiscoveryProtocol:
     """
 
     # LXI Standard Port for VXI-11 Device Core
-    VXI_11_PORT = 111
+    # Configuration for multi-port discovery universe (SCPI, VXI-11, HiSLIP)
+    PROBE_PORTS = [5025, 5024, 111, 4880, 49152] 
+    # HiSLIP (High-Speed LAN Instrument Protocol) standard port
+    HISLIP_PORT = 4880
 
     @classmethod
     def broadcast_vxi11_discover(cls, subnet_broadcast: str = "255.255.255.255") -> List[Dict[str, str]]:
@@ -73,13 +76,52 @@ class LXIDiscoveryProtocol:
         return discovered_devices
         
     @classmethod
-    def start_mdns_listener(cls):
+    def start_mdns_listener(cls, callback: Optional[Any] = None):
         """
         Starts an mDNS/zeroconf background listener for '_lxi._tcp.local.'
-        This allows true "Plug and Play" where the software is notified via event 
-        the exact second an engineer plugs a network cable into an analyzer.
+        Detects instruments the instant they are plugged into the network.
         """
-        logger.info("Starting mDNS LXI Listener in background thread... (Ready for integration)")
-        # Real implementation would use the `zeroconf` Python package to listen for _lxi._tcp.local
+        try:
+            from zeroconf import Zeroconf, ServiceBrowser, ServiceListener
+
+            class LXIListener(ServiceListener):
+                def add_service(self, zc: Zeroconf, type_: str, name: str):
+                    info = zc.get_service_info(type_, name)
+                    if info:
+                        addresses = [socket.inet_ntoa(addr) for addr in info.addresses]
+                        ip = addresses[0] if addresses else "Unknown"
+                        port = info.port
+                        logger.info(f"[mDNS] LXI Device discovered: {name} at {ip}:{port}")
+                        
+                        # Extract IDN from TXT record if available
+                        idn = "Unknown"
+                        if info.properties:
+                            # properties often contain idn, model, etc
+                            idn_bytes = info.properties.get(b'idn', b'Unknown')
+                            idn = idn_bytes.decode(errors='replace')
+
+                        if callback:
+                            import asyncio
+                            # Schedule the async callback
+                            try:
+                                loop = asyncio.get_running_loop()
+                                loop.create_task(callback(ip, port, idn))
+                            except RuntimeError:
+                                # Not in an event loop
+                                pass
+
+                def update_service(self, zc: Zeroconf, type_: str, name: str):
+                    pass
+
+                def remove_service(self, zc: Zeroconf, type_: str, name: str):
+                    logger.info(f"[mDNS] LXI Device removed: {name}")
+
+            zc = Zeroconf()
+            browser = ServiceBrowser(zc, "_lxi._tcp.local.", LXIListener())
+            logger.info("mDNS LXI Sentry: ACTIVE (Listening for _lxi._tcp.local.)")
+            return zc, browser
+        except Exception as e:
+            logger.error(f"Failed to start mDNS listener: {e}")
+            return None, None
 
 lxi_discovery = LXIDiscoveryProtocol()

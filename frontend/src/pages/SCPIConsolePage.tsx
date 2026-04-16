@@ -6,17 +6,15 @@
  * TRACE: [PaperPlane] -> [POST /api/commands/send] -> [Hardware]
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { 
   Terminal, 
   PaperPlaneTilt, 
   Trash, 
   CaretRight, 
-  Broadcast, 
-  Lightning,
-  ShieldAlert,
-  HardDrive,
-  Power
+  ShieldWarning,
+  Power,
+  Lightning
 } from '@phosphor-icons/react';
 import { GlassCard } from '../components/ui/GlassCard';
 
@@ -250,7 +248,7 @@ const SCPIConsolePage: React.FC = () => {
 
                     <GlassCard level={1} className="p-6 bg-status-fail/5 border-status-fail/20 flex-1 relative overflow-hidden group">
                         <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-110 transition-transform">
-                            <ShieldAlert size={120} weight="thin" className="text-status-fail" />
+                            <ShieldWarning size={120} weight="thin" className="text-status-fail" />
                         </div>
                         <h4 className="text-[10px] font-black uppercase text-status-fail tracking-[0.2em] mb-4 flex items-center gap-2">
                             <Power weight="fill" /> Kill switch

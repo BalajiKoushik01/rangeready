@@ -146,7 +146,9 @@ class RSUniversalDriver(BaseInstrumentDriver):
                 self.instrument_type = self._detect_type(self.idn)
                 print(f"[R&S-Socket] Connected: {self.idn}")
                 return True
-        except (socket.error, socket.timeout):
+        except (socket.error, socket.timeout) as e:
+            # Socket failure is common during discovery; log as debug to avoid cluttering primary console
+            print(f"[R&S-Socket] Connection to {address}:{port} failed: {e}")
             pass
         finally:
             if not self.is_connected and self.sock:
@@ -271,8 +273,9 @@ class RSUniversalDriver(BaseInstrumentDriver):
             stb = int(stb_str)
             if not (stb & 0x04):  # Bit 2 = EAV (Error Available)
                 return []
-        except Exception:
+        except Exception as e:
             # Fallback to direct query if *STB? fails
+            print(f"[R&S] STB registry check failed: {e}")
             pass
             
         errors = []
@@ -301,7 +304,9 @@ class RSUniversalDriver(BaseInstrumentDriver):
                 if (stb & 0x10) or (stb & 0x20):  # MAV or ESB
                     if self.query("*OPC?").strip() == "1":
                         return True
-            except Exception:
+            except Exception as e:
+                # Log non-fatal query failure during OPC wait
+                print(f"[R&S] OPC Poll heartbeat failed: {e}")
                 pass
             time.sleep(0.05)
         return False

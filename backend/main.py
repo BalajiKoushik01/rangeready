@@ -22,10 +22,36 @@ import json
 import asyncio
 from typing import List
 from backend.database import init_db, get_db
-from backend.routers import tests, reports, templates, calibration, commands, instruments, system, ai, control
+from backend.routers import tests, reports, templates, calibration, commands, instruments, system, ai, control, orchestrator
 from backend.services.broadcast import manager
 from backend.services.status_poller import status_poller
+from backend.services.auto_debugger import auto_debugger
 from backend.drivers.plugin_manager import PluginManager
+
+# ─────────────────────────────────────────────────────────────────────────────
+# INDUSTRIAL WS LOG BRIDGE
+# ─────────────────────────────────────────────────────────────────────────────
+import logging
+
+class WSLogHandler(logging.Handler):
+    """Pipes all internal backend logs into the WebSocket stream for GUI visibility."""
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            # Use call_soon_threadsafe because logging might happen outside the event loop
+            loop = asyncio.get_event_loop_policy().get_event_loop()
+            if loop.is_running():
+                asyncio.run_coroutine_threadsafe(
+                    manager.broadcast_log(record.levelname, msg, record.name), 
+                    loop
+                )
+        except Exception:
+            pass
+
+ws_handler = WSLogHandler()
+ws_handler.setFormatter(logging.Formatter('%(message)s'))
+logging.getLogger("RangeReady").addHandler(ws_handler)
+logging.getLogger("uvicorn.error").addHandler(ws_handler)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -51,14 +77,25 @@ async def lifespan(app: FastAPI):
     # 4. Starting Automated Hardware Discovery Handshake
     from backend.services.config_service import config_service
     from backend.services.discovery_service import discovery_service
+    from backend.services.lxi_discovery import lxi_discovery
     all_config = config_service.get_all_instruments()
     
-    if all_config.get("Discovery", True):
-        print("GVB Tech Discovery: Starting autonomous background scan...")
-        # Run periodically to handle Ethernet plug-and-play during runtime
+    # mDNS "Plug and Play" Discovery (High-Speed Industrial Sentry)
+    lxi_discovery.start_mdns_listener(callback=discovery_service.handle_mdns_discovery)
+    
+    # INDUSTRIAL FIX: Ensure immediate discovery on boot
+    discovery_enabled = all_config.get("discovery_active", True)
+    if discovery_enabled:
+        print("GVB Tech Discovery: Initiating immediate network handshake...")
+        # Create task for continuous scanning
         app.state.discovery_task = asyncio.create_task(
             discovery_service.background_discovery_task()
         )
+        # Perform initial scan synchronously (within the lifespan context) to secure IPs
+        try:
+            asyncio.create_task(discovery_service.scan_network())
+        except Exception as e:
+            print(f"Initial discovery error: {e}")
     
     # 5. Start Hardware Status Poller
     await status_poller.start()
@@ -89,13 +126,16 @@ app.include_router(instruments.router, prefix="/api/instruments", tags=["Asset R
 app.include_router(system.router, prefix="/api/system", tags=["System Control"])
 app.include_router(ai.router, prefix="/api/ai", tags=["Offline Intelligence"])
 app.include_router(control.router, prefix="/api/instrument-control", tags=["Instrument Master Control"])
+app.include_router(orchestrator.router, prefix="/api/orchestrator", tags=["System Orchestrator"])
 
 @app.get("/health")
 async def health():
+    diagnostics = auto_debugger.run_full_diagnostics()
     return {
-        "status": "ok", 
-        "version": "1.5.0", 
-        "message": "GVB Tech Intelligence Engine (Hardened V5.0) is active",
+        "status": "ok" if diagnostics["database"]["status"] == "healthy" else "degraded", 
+        "version": "1.5.1", 
+        "message": "GVB Tech Intelligence Engine (Hardened V5.1) is active",
+        "diagnostics": diagnostics,
         "features": ["S-Parameters", "VSWR", "ISRO-PDF", "Live-Tracking", "AI-Anomalies", "Custom-Templates", "Asset-Registry", "Vector-Cal"]
     }
 

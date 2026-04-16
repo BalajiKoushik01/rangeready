@@ -8,7 +8,7 @@ This is CRITICAL for ultra-low latency and preventing "Socket Refused" errors.
 """
 import asyncio
 import time
-from typing import Dict, Optional, Type, AsyncGenerator
+from typing import Dict, Optional, Type, AsyncGenerator, Any
 from contextlib import asynccontextmanager
 from backend.drivers.base_driver import BaseInstrumentDriver
 from backend.services.asset_service import asset_service
@@ -25,13 +25,49 @@ class DriverRegistry:
         if cls._instance is None:
             cls._instance = super(DriverRegistry, cls).__new__(cls)
             cls._instance._drivers: Dict[int, BaseInstrumentDriver] = {}
-            cls._instance._locks: Dict[int, asyncio.Lock] = {}
         return cls._instance
 
-    def get_lock(self, instrument_id: int) -> asyncio.Lock:
-        if instrument_id not in self._locks:
-            self._locks[instrument_id] = asyncio.Lock()
-        return self._locks[instrument_id]
+    def __init__(self):
+        self._drivers: Dict[int, BaseInstrumentDriver] = {}
+        self._queues: Dict[int, asyncio.Queue] = {}
+        self._workers: Dict[int, asyncio.Task] = {}
+        self._results: Dict[str, asyncio.Future] = {}
+
+    def get_queue(self, instrument_id: int) -> asyncio.Queue:
+        if instrument_id not in self._queues:
+            self._queues[instrument_id] = asyncio.Queue()
+            # Start a dedicated worker for this instrument
+            self._workers[instrument_id] = asyncio.create_task(self._instrument_worker(instrument_id))
+        return self._queues[instrument_id]
+
+    async def _instrument_worker(self, instrument_id: int):
+        """Dedicated background worker to ensure strictly sequential 1-to-1 hardware I/O."""
+        queue = self._queues[instrument_id]
+        while True:
+            future, func, args, kwargs = await queue.get()
+            try:
+                # Broadcast sync active to GUI
+                await manager.broadcast({"type": "opc_sync", "active": True})
+                
+                # Execute the hardware command
+                if asyncio.iscoroutinefunction(func):
+                    res = await func(*args, **kwargs)
+                else:
+                    res = func(*args, **kwargs)
+                future.set_result(res)
+            except Exception as e:
+                future.set_exception(e)
+            finally:
+                # Clear sync status
+                await manager.broadcast({"type": "opc_sync", "active": False})
+                queue.task_done()
+
+    async def enqueue_command(self, instrument_id: int, func: Any, *args, **kwargs) -> Any:
+        """Enqueues a command for the specific hardware channel and waits for completion."""
+        queue = self.get_queue(instrument_id)
+        future = asyncio.get_event_loop().create_future()
+        await queue.put((future, func, args, kwargs))
+        return await future
 
     async def get_driver(self, instrument_id: int, driver_cls: Type[BaseInstrumentDriver], sim: bool = False) -> Optional[BaseInstrumentDriver]:
         """Returns a persistent, connected driver instance for the given instrument ID."""
@@ -73,42 +109,29 @@ class DriverRegistry:
     @asynccontextmanager
     async def lock_and_broadcast(self, instrument_id: int) -> AsyncGenerator[None, None]:
         """
-        Global Mutex Guard:
-        1. Waits for hardware lock with 5s timeout.
-        2. Broadcasts BUSY status to UI.
-        3. Executes command.
-        4. Broadcasts READY status to UI.
+        Legacy shim for backward compatibility. 
+        In the new architecture, the Queue handles sequential access.
         """
-        lock = self.get_lock(instrument_id)
+        # We still use a lock for high-level UI 'Busy' state sync if needed
+        if not hasattr(self, '_locks'): self._locks = {}
+        if instrument_id not in self._locks: self._locks[instrument_id] = asyncio.Lock()
         
-        try:
-            # 1. Wait for lock with Safety Timeout (Increased to 10s for heavy trace operations)
-            await asyncio.wait_for(lock.acquire(), timeout=10.0)
-            
-            # 2. Notify UI
+        async with self._locks[instrument_id]:
             await manager.broadcast({
                 "type": "hardware_state",
                 "instrument_id": instrument_id,
                 "busy": True,
-                "message": "Background command in process. Please wait..."
+                "message": "Processing..."
             })
-            
-            yield
-            
-        except asyncio.TimeoutError:
-            print(f"[DriverRegistry] CRITICAL: Command timeout on Instrument {instrument_id}")
-            raise Exception("Hardware timeout: Background command took too long. Auto-unlocking UI.")
-        finally:
-            # 3. Release and Notify UI
-            if lock.locked():
-                lock.release()
-                
-            await manager.broadcast({
-                "type": "hardware_state",
-                "instrument_id": instrument_id,
-                "busy": False,
-                "message": "Ready"
-            })
+            try:
+                yield
+            finally:
+                await manager.broadcast({
+                    "type": "hardware_state",
+                    "instrument_id": instrument_id,
+                    "busy": False,
+                    "message": "Ready"
+                })
 
     def release_all(self):
         """Shutdown cleanup."""

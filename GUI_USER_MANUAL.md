@@ -42,10 +42,11 @@ The interface dynamically updates its SCPI command set based on the selected man
 
 ### 3.2 Signal Generator (SigGen) Controls
 - **RF Output Toggle**: The primary safety switch. When **"ON"**, the button glows emerald, indicating active RF power at the RF Output port.
-- **Frequency Setup**: 
-  - Supports **Hz, kHz, MHz, and GHz** units.
-  - The LCD readout displays CW (Continuous Wave) frequency with up to 6 decimal places for high-precision tuning.
-- **Output Level (Amplitude)**: Sets the power in **dBm**. Range depends on instrument capability (typically -130 dBm to +20 dBm).
+- **LCD-First Interaction (Typable Displays)**:
+    - **Click-to-Entry**: Click directly on the frequency or amplitude digits to activate the input field.
+    - **Auto-Focus**: The system automatically captures cursor focus and selects the existing value for rapid replacement.
+    - **Context-Aware Units**: A glassy unit termination strip appears alongside the input for GHz, MHz, kHz, or dBm selection.
+    - Supports professional scientific notation (e.g., `1.5e9` for 1.5 GHz).
 - **Modulation Hub**:
     - **AM**: Toggle Amplitude Modulation and adjust depth in % (0-100%).
     - **FM**: Toggle Frequency Modulation and adjust deviation in Hz.
@@ -53,14 +54,10 @@ The interface dynamically updates its SCPI command set based on the selected man
 - **Pulse Generator**: Configure **Period** and **Width** (ns to s). Essential for radar, EW (Electronic Warfare), and pulsed-RF characterization.
 
 ### 3.3 Spectrum Analyzer Control & Visualization
-- **Live Trace Display**: A high-speed SVG renderer capable of high-frame-rate telemetry updates.
-    - **Grid**: 10x10 division system for visual magnitude and frequency estimation.
-    - **Ref Level Line**: A dashed line indicating the current reference level for easier visual alignment.
-- **Acquisition Parameters**:
-    - **Reference Level**: Adjusts the top of the grid (typically 0 dBm).
-    - **Attenuation**: Global hardware protection. Set to **AUTO** (Default) to let the instrument manage internal attenuation based on the power level.
-    - **Detectors**: Choose between Normal, Average, Positive Peak, Sample, and Negative Peak to change how the analyzer samples the noise and peaks.
-    - **Averaging**: Smooths the noise floor by averaging N-number of sweeps (Set Count from 1 to 999).
+- **LCD-First Visualization**:
+    - **Center Freq / Span Entry**: Click directly on the spectrum display footer to change observation windows.
+    - **High-Contrast Trace**: Backdrop-blurred SVG renderer with high-speed telemetry updates.
+    - **Manufacturer Glow**: Interfaces pulse with **Keysight Blue** or **R&S Orange** based on the active driver.
 - **6-Marker Hub**:
     - **Peak Search**: Instantly snaps the active marker (M1-M6) to the highest signal peak in the current span.
     - **Next Peak**: Moves the marker to the next highest outlier (right side search) in the spectrum.
@@ -149,4 +146,12 @@ In **Signal Analysis Mode**, the AI monitors the noise floor. It raises "SIGNAL_
 - **"Neural Matrix Error"**: Ensure the GGUF model file is present in the `models/` directory for offline inference.
 
 ---
-**Manual End - RangeReady HIL V5.1**
+## 10. Hardware Resilience: The SCPI Sentry
+RangeReady V6.0 includes an "industrial-grade" resilience layer called **The Sentry** to protect live demonstrations from hardware or network failure.
+
+- **Transient Auto-Retry**: If a network packet is dropped or a bus timeout occurs, the system automatically attempts 3 retries with exponential backoff before alerting the operator.
+- **Protocol Fallback**: If an instrument rejects a manufacturer-specific SCPI command, the Sentry falls back to generic IEEE 488.2 standard commands (e.g., `*CLS`, `*RST`) to reset communication.
+- **AI-Led Healing**: The Apex AI monitors the bus traffic. If it detects a syntax error (e.g., `INVALID_COMMAND`), it proposes and executes a technical correction in real-time.
+
+---
+**Manual End - RangeReady HIL V6.0 // Investor Edition**

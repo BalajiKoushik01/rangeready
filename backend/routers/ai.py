@@ -32,7 +32,7 @@ from ..services.broadcast import manager
 from ..services.config_service import config_service
 from ..drivers.plugin_manager import PluginManager
 
-router = APIRouter(prefix="/api/ai", tags=["AI Intelligence"])
+router = APIRouter(tags=["AI Intelligence"])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -116,14 +116,16 @@ async def trigger_download():
     if status["download"]["status"] == "downloading":
         return {"status": "already_downloading", "message": "Download already in progress."}
 
-    ai_copilot.start_download()
     return {
-        "status": "download_started",
-        "message": f"Downloading {ai_copilot.MODEL_FILENAME} (~1.6 GB). Poll GET /api/ai/status for progress.",
+        "status": "deprecated",
+        "message": f"Ollama engine requires pulling the model natively: run `ollama pull {status.get('model_name', 'gemma2:2b')}`.",
     }
 
 
-@router.get("/download-progress", responses={503: {"description": "AI Copilot service not available"}})
+@router.get("/download-progress", responses={
+    200: {"description": "SSE stream started"},
+    503: {"description": "AI Copilot service not available"}
+})
 async def download_progress_sse():
     """
     Server-Sent Events stream for real-time download progress.
@@ -161,8 +163,8 @@ async def translate_to_scpi(req: TranslateRequest):
     try:
         command = ai_copilot.translate_to_scpi(req.query)
         return {"command": command, "model_available": ai_copilot.is_available()}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="AI processing error")
 
 
 @router.post("/diagnose", responses={500: {"description": "Internal AI inference error"}})
@@ -181,8 +183,8 @@ async def diagnose_anomaly(req: DiagnoseRequest):
             req.test_name, req.limits, req.actual_val, req.band
         )
         return {"diagnosis": diagnosis, "model_available": ai_copilot.is_available()}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="AI processing error")
 
 
 @router.post("/chat", responses={500: {"description": "Internal AI inference error"}})
@@ -204,8 +206,8 @@ async def chat(req: ChatRequest):
             "response": response,
             "model_available": ai_copilot.is_available(),
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="AI processing error")
 
 
 @router.post("/agentic-execute", responses={500: {"description": "Agentic execution error"}})
@@ -242,20 +244,24 @@ async def agentic_execute(req: AgenticRequest):
             driver.set_command_map(req.command_map, "generic")
 
         if not driver.connect(req.address):
-            raise HTTPException(status_code=503, detail=f"Cannot connect to {req.address}")
+            raise HTTPException(
+                status_code=503, 
+                detail=f"Cannot connect to {req.address}",
+                headers={"X-Error": "Hardware-Unavailable"}
+            )
 
-        idn = driver.idn  # Used for context-aware SCPI translation
+        idn = driver.idn 
 
-        # Broadcast user intent to telemetry
         await manager.broadcast({
             "type": "system_info",
             "message": f"[AI Agent] '{req.query}' → translating for {idn}",
         })
 
-        # Execute agentically
-        result = ai_copilot.agentic_execute(req.query, idn, driver)
+        # Execute agentically (Now async-aware if needed, though most drivers are sync)
+        # Note: ai_copilot.agentic_execute calls engine.send, which is now async
+        result = await ai_copilot.agentic_execute(req.query, idn, driver)
 
-        # Broadcast the translated command as a telemetry packet
+        # Broadcast results
         if result.get("command_sent"):
             await manager.broadcast({
                 "type": "telemetry_packet",
@@ -264,7 +270,6 @@ async def agentic_execute(req: AgenticRequest):
                 "timestamp": True,
             })
 
-        # Broadcast any heal actions
         for action in result.get("heal_actions", []):
             await manager.broadcast({
                 "type": "telemetry_heal",
@@ -273,23 +278,37 @@ async def agentic_execute(req: AgenticRequest):
                 "timestamp": True,
             })
 
-        # Broadcast hardware response
-        if result.get("response") and result["response"] not in ("Executed", None):
-            await manager.broadcast({
-                "type": "telemetry_response",
-                "packet": result["response"],
-                "address": req.address,
-                "timestamp": True,
-            })
-
         driver.disconnect()
         result["idn"] = idn
         return result
 
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# XAI APPROVAL ENDPOINTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+class HealResponse(BaseModel):
+    approved: bool
+
+@router.post("/confirm-heal/{proposal_id}")
+async def confirm_heal(proposal_id: str, resp: HealResponse):
+    """
+    Accepts or rejects an AI-proposed hardware fix.
+    Resolves the pending future in the SCPINegotiationEngine.
+    """
+    from ..services.scpi_negotiation_engine import PENDING_APPROVALS
+    
+    if proposal_id not in PENDING_APPROVALS:
+        raise HTTPException(status_code=404, detail="Proposal not found or expired")
+    
+    future = PENDING_APPROVALS.pop(proposal_id)
+    if not future.done():
+        future.set_result({"approved": resp.approved})
+        
+    return {"status": "success", "approved": resp.approved}
 
 
 # Legacy compatibility endpoints (keep these so old GUI code doesn't break)

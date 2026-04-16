@@ -9,7 +9,7 @@ from backend.services.broadcast import manager
 from backend.services.sequence_engine import SequenceEngine
 from backend.services.config_service import config_service
 
-router = APIRouter(prefix="/api/tests", tags=["Test Execution"])
+router = APIRouter(prefix="", tags=["Test Execution"])
 
 @router.post("/run", responses={404: {"description": "Test template not found"}})
 async def run_test(dut_name: str, dut_serial: str, template_id: str, db: Annotated[Session, Depends(get_db)]):

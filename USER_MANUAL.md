@@ -1,11 +1,11 @@
-# RangeReady HIL V5.0 - User Manual & Integration Guide
+# RangeReady HIL V6.0 -- User Manual & AI Guide
 
 > [!CAUTION]
 > **CONFIDENTIAL AND PROPRIETARY SOFTWARE**  
 > This documentation and the associated software are the exclusive intellectual property of **GVB Tech**.
 
 ## 1. Environment Setup (One-Click Initialization)
-The global Control Hub can be ignited with a single command, automatically loading Python backends, Node/React frontends, and setting up the database.
+The global Control Hub can be ignited with a single command, automatically loading Python backends, modular React frontends, and the local APEX AI engine.
 
 **Windows:**
 1. Open Command Prompt or PowerShell in the `range ready` folder.
@@ -15,27 +15,47 @@ The global Control Hub can be ignited with a single command, automatically loadi
 1. Open Terminal in the `range ready` directory.
 2. Run: `chmod +x INIT_READY.sh && ./INIT_READY.sh`
 
-*These scripts automatically provision the virtual environment, install dependencies, validate hardware config, and boot the intelligence server.*
+---
 
-## 2. Hardware Orchestration (Actionable Troubleshooting)
-The `HardwareChecklist` guarantees SCPI VXI-11 connections before sweep sequences. The system auto-discovers instruments on standard subnets (port 5025).
+## 2. 🧠 The Apex AI Co-Pilot (Supervised Autonomy)
+In V6.0, RangeReady features a supervised intelligence engine that assists with hardware repairs.
+
+### 2.1 The Consent Loop (Consent-First Execution)
+When a hardware error is detected during a test sequence (e.g., a SCPI -113 Header Error), the AI engine generates a **Security Proposal**.
+- **Pause**: The test sequence is automatically paused.
+- **Review**: A high-fidelity modal pops up showing the **Failing Command**, the **AI Proposed Fix**, and the **Technical Reasoning (XAI)**.
+- **Action**: You MUST click **[APPROVE]** to apply the fix or **[DECLINE]** to abort the sequence.
+
+### 2.2 The Intelligence HUD
+Navigate to the **Intelligence** tab to access the full AI interface:
+- **Chat**: Conversational assistant for RF domain knowledge and SCPI lookup.
+- **Agentic**: Direct hardware control. Type what you want (e.g., "Set signal gen to 5GHz at -10dBm") and the AI will translate and execute the command.
+- **Model**: Monitor the local Gemma-2 engine state, download progress, and context loading.
+
+---
+
+## 3. Hardware Orchestration & Auto-Discovery
+The system auto-discovers instruments on standard subnets (port 5025).
 
 **Intelligent Auto-Discovery:**
-- Ensure the Keysight Signal Generator and **Rohde & Schwarz** Spectrum Analyzer are connected via LAN.
-- Navigate to the **System Configuration** page in the dashboard.
-- The system will dynamically interrogate the network, identify models via `*IDN?`, and auto-assign IP addresses.
+- Ensure Keysight and **Rohde & Schwarz** devices are connected via LAN.
+- Use the **Dashboard** to interrogate the network. The system uses recursive `*IDN?` interrogation to identify and bind the correct drivers automatically.
 
-**Actionable GUI Debugging:**
-- The GUI explicitly warns you if a `BUS_FAULT` occurs.
-- If testing the link in the "Instrumentation Bus Config" fails, verify the physical LAN cable and ensure both Keysight and R&S devices are powered on.
+---
 
-## 3. Offline & Pendrive Deployment
-For environments where internet access or software installation is restricted (e.g. secure office PCs), use the **Offline Toolkit**.
+## 4. Troubleshooting & Self-Healing
+If a hardware link fails:
+1. Check the **Glass Console™** for live bus traffic.
+2. Look for the **🔧 HEALED** badge on commands — this indicates the AI has automatically mitigated a firmware quirk or dialect mismatch.
+3. If a **FATAL ERROR** persists, check the physical LAN connection and IP static binding in `config.json`.
 
-1.  Copy the `RangeReady_OFFLINE` folder to a pendrive.
-2.  Plug the pendrive into the target system.
-3.  Double-click **`START_OFFLINE.bat`**.
-4.  The system will launch using its internal portable Python environment and pre-built UI assets.
+---
 
-## 4. Industrial Testing
-The system defaults to the `KEYSIGHT_RS_SUITE` fallback for industrial Signal Generators and Spectrum Analyzers. Click "Engage Target" to execute real-world initialization SCPI commands (e.g. `:FREQ:CW` and `:TRAC:DATA?`).
+## 5. Offline & Pendrive Portability
+1. Copy the `RangeReady_OFFLINE` folder to a secure pendrive.
+2. Plug into an air-gapped station.
+3. Run **`START_OFFLINE.bat`**.
+*The system uses a standalone Ollama binary and a portable Python venv. No internet or system-level installs required.*
+
+**© 2026 GVB LABS CORE**  
+**Project Lead: Balaji Koushik // GVB Tech**

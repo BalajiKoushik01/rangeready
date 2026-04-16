@@ -7,7 +7,7 @@ DESCRIPTION: Loads instrument metadata (IP, Driver Type) from the DB to initiali
 """
 import os
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 
 class SCPICommandTemplate(BaseModel):

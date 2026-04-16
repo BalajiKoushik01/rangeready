@@ -19,7 +19,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Cpu, MagnifyingGlass, CheckCircle, Warning, ArrowRight,
+  Cpu, MagnifyingGlass, CheckCircle, ArrowRight,
   ArrowLeft, FloppyDisk, Plug, Wrench, Terminal, Sparkle
 } from '@phosphor-icons/react';
 import { GlassCard } from '../components/ui/GlassCard';

@@ -28,8 +28,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Radar, ChevronUp, ChevronDown, CheckCircle, Warning,
-  X, Cpu, Heartbeat, WifiHigh, ArrowsClockwise, Lightning
+  Broadcast, CaretUp, CaretDown, CheckCircle, Warning,
+  X, Cpu, WifiHigh, ArrowsClockwise, Lightning
 } from '@phosphor-icons/react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -102,7 +102,6 @@ export const DiscoveryVisibilityPanel: React.FC = () => {
   // ─── Stats counters
   const found = events.filter(e => e.type === 'found').length;
   const heals = events.filter(e => e.type === 'heal').length;
-  const errors = events.filter(e => e.type === 'error').length;
 
   // ─── WebSocket connection
   useEffect(() => {
@@ -195,10 +194,6 @@ export const DiscoveryVisibilityPanel: React.FC = () => {
                 <Lightning size={10} className="inline mr-1" weight="fill" />
                 {heals} healed
               </span>
-              <span className="text-[9px] text-status-fail font-black">
-                <Warning size={10} className="inline mr-1" weight="fill" />
-                {errors} errors
-              </span>
               <button
                 onClick={() => setEvents([])}
                 className="ml-auto text-[8px] text-text-tertiary hover:text-status-fail transition-all"
@@ -207,10 +202,60 @@ export const DiscoveryVisibilityPanel: React.FC = () => {
               </button>
             </div>
 
+            {/* 🆕 PRESTIGE CONTROLS: Investor-Grade Discovery Management */}
+            <div className="px-3 py-2 border-b border-white/10 bg-white/5 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-black text-text-tertiary uppercase tracking-widest">Auto-Scan Engine</span>
+                <button 
+                  onClick={async () => {
+                     const nextState = isConnected ? 'paused' : 'active';
+                     await fetch(`http://${window.location.hostname}:8787/api/system/discovery/state`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ state: nextState }) 
+                     });
+                  }}
+                  className={`px-2 py-1 rounded text-[8px] font-bold transition-all ${isConnected ? 'bg-status-pass/20 text-status-pass' : 'bg-white/10 text-text-tertiary'}`}
+                >
+                  {isConnected ? 'RUNNING' : 'PAUSED'}
+                </button>
+              </div>
+
+              <div className="group relative">
+                <input 
+                  type="text" 
+                  placeholder="Directed Discovery (Enter IP)" 
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-[11px] text-white font-mono placeholder:opacity-40 outline-none focus:border-accent-blue/50 focus:bg-black/60 transition-all shadow-inner"
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter') {
+                      const ip = e.currentTarget.value.trim();
+                      if(!ip) return;
+                      addEvent({ type: 'info', message: `Targeting hardware node [${ip}]...` });
+                      try {
+                        const res = await fetch(`http://${window.location.hostname}:8787/api/instruments/probe`, {
+                          method: 'POST',
+                          headers: {'Content-Type': 'application/json'},
+                          body: JSON.stringify({ address: ip })
+                        });
+                        const data = await res.json();
+                        addEvent({ type: 'found', message: `Identity Secured: ${data.vendor} ${data.model} found.`, detail: data.idn });
+                      } catch (err) {
+                        addEvent({ type: 'error', message: `Directed Probe Failed: Node ${ip} unreachable or busy.` });
+                      }
+                      e.currentTarget.value = '';
+                    }
+                  }}
+                />
+                <div className="absolute right-3 top-2.5 opacity-20 pointer-events-none group-focus-within:opacity-100 group-focus-within:text-accent-blue transition-all">
+                  <Lightning size={12} weight="fill" />
+                </div>
+              </div>
+            </div>
+
             {/* Event stream */}
             <div
               ref={scrollRef}
-              className="overflow-y-auto max-h-64 px-3 py-2 custom-scrollbar space-y-0"
+              className="overflow-y-auto max-h-56 px-3 py-2 custom-scrollbar space-y-0"
             >
               {events.length === 0 ? (
                 <p className="text-[10px] text-text-tertiary text-center py-6 opacity-50">
@@ -239,7 +284,7 @@ export const DiscoveryVisibilityPanel: React.FC = () => {
       >
         {/* Animated radar icon */}
         <div className={`relative shrink-0 ${isConnected ? 'text-accent-blue' : 'text-status-fail'}`}>
-          <Radar size={18} weight="duotone" />
+          <Broadcast size={18} weight="duotone" />
           {isConnected && (
             <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-status-pass rounded-full animate-pulse border border-bg-surface" />
           )}
@@ -272,9 +317,9 @@ export const DiscoveryVisibilityPanel: React.FC = () => {
         )}
 
         {isExpanded ? (
-          <ChevronDown size={14} className="text-text-tertiary shrink-0" />
+          <CaretDown size={14} className="text-text-tertiary shrink-0" />
         ) : (
-          <ChevronUp size={14} className="text-text-tertiary shrink-0" />
+          <CaretUp size={14} className="text-text-tertiary shrink-0" />
         )}
       </button>
     </div>

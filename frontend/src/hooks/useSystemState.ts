@@ -1,6 +1,5 @@
 import { useContext } from 'react';
 import { SystemStateContext } from '../context/SystemStateContext';
-import type { SystemStateContextType } from '../context/SystemStateContext';
 
 /**
  * useSystemState Hook

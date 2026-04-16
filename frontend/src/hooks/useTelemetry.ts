@@ -3,21 +3,29 @@
  * ROLE: Hardware Communication State Store (Zustand).
  * SOURCE: App.tsx (WebSocket Dispatch)
  * TARGET: TelemetrySentry component and Dashboard Log.
- * TRACE: [backend.broadcast] -> [App.onmessage] -> [useTelemetry.addPacket()]
  */
 import { create } from 'zustand';
 
-interface TelemetryPacket {
+// Augmented packet types to include AI Intelligence events
+export type PacketType = 'sent' | 'received' | 'error' | 'ai_heal' | 'system_info' | 'proposal';
+
+export interface TelemetryPacket {
   id: string;
   packet: string;
   address: string;
   timestamp: string;
-  type: 'sent' | 'received' | 'error';
+  type: PacketType;
+  // Proposal extras
+  proposal_id?: string;
+  suggestion?: string;
+  explanation?: string;
+  original_cmd?: string;
+  impact?: 'low' | 'medium' | 'high' | 'critical';
 }
 
 interface TelemetryStore {
   packets: TelemetryPacket[];
-  addPacket: (packet: string, address: string, type?: 'sent' | 'received' | 'error') => void;
+  addPacket: (packet: string, address: string, type?: PacketType) => void;
   clearPackets: () => void;
 }
 
@@ -32,7 +40,7 @@ export const useTelemetry = create<TelemetryStore>((set) => ({
         type,
         timestamp: new Date().toLocaleTimeString(),
       },
-      ...state.packets.slice(0, 49), // Keep last 50 packets for the dashboard history view
+      ...state.packets.slice(0, 49),
     ],
   })),
   clearPackets: () => set({ packets: [] }),

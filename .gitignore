@@ -31,17 +31,13 @@ Thumbs.db
 .gemini/
 scratch/
 
-# Build artifacts
-electron/release/
-electron/dist/
-frontend/docs/
-backend/build/
-backend/dist/
-tools/
-dist/
-release/
-
 # Offline Bundle Binaries
-RangeReady_OFFLINE/python/
-RangeReady_OFFLINE/node_modules/
-RangeReady_OFFLINE/frontend_dist/
+RangeReady_OFFLINE/
+Examples-main.zip
+Keysight_Instrument_Control_Bundle_1.2024.exe
+backend/models/ollama/
+backend/nul
+# Build artifacts
+release/
+win-unpacked/
+dist/

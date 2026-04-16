@@ -31,7 +31,7 @@ class DiscoverySettings(BaseModel):
 class BlacklistUpdate(BaseModel):
     ip: str
 
-router = APIRouter(prefix="/api/system", tags=["System Configuration"])
+router = APIRouter(tags=["System Configuration"])
 
 @router.post("/reset", responses={500: {"description": "System reset failed"}})
 def reset_system(db: Annotated[Session, Depends(get_db)]):
@@ -90,6 +90,19 @@ async def trigger_discovery():
     """Triggers an asynchronous subnet scan and identification."""
     asyncio.create_task(discovery_service.scan_network())
     return {"status": "scanning", "message": "Discovery sequence initiated."}
+
+class ManualDiscovery(BaseModel):
+    ip: str
+
+@router.post("/discover/manual")
+async def trigger_manual_discovery(payload: ManualDiscovery):
+    """Triggers a targeted interrogation for a specific IP address."""
+    # We await this because it's a direct user action and we want to know success status
+    res = await discovery_service.manual_discovery(payload.ip)
+    if res:
+        return {"status": "success", "data": res}
+    else:
+        raise HTTPException(status_code=400, detail=f"Handshake failed with {payload.ip}")
 
 @router.get("/status")
 def get_status():

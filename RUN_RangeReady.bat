@@ -2,100 +2,80 @@
 setlocal enabledelayedexpansion
 
 :: ============================================================================
-:: GVB Tech RangeReady: IRONCLAD AIR-GAPPED LAUNCHER
+:: GVB TECH RANGEREADY: INDUSTRIAL UNIFIED BOOTSTRAP [V5.3]
 :: ============================================================================
-:: Optimized for: TOTAL ISOLATION on arbitrary host machines.
-:: 1. Force-locks Python and Paths to the Pendrive root.
-:: 2. Prevents conflicts from host machine paths/variables.
-:: 3. Zero-Network required.
+:: Optimized for: MISSION-CRITICAL AIR-GAPPED DEPLOYMENT
+:: This script acts as the hardened entry point for the RangeReady platform.
 :: ============================================================================
 
-title RangeReady Industrial Interface [OFFLINE V5.1]
+title RangeReady Industrial Launcher [BOOTSTRAP V5.3]
 color 0B
+cls
+
 echo.
-echo  [SYSTEM] Initializing GVB Tech RangeReady RF Platform...
-echo  [STATUS] Mode: TOTAL ISOLATION / AIR-GAPPED
+echo  [94m============================================================================[0m
+echo  [96m           RANGE READY - INDUSTRIAL RF PLATFORM [MISSION CONTROL][0m
+echo  [94m============================================================================[0m
+echo  [97m [STATUS] Mode: TOTAL ISOLATION / AIR-GAPPED[0m
+echo  [97m [TIME]   %DATE% %TIME%[0m
+echo  [94m----------------------------------------------------------------------------[0m
 echo.
 
-:: 1. ABSOLUTE PATH RESOLUTION (Drive-Letter Independent)
-:: Use %~dp0 to lock everything to the location of this script on the pendrive
+:: 1. ABSOLUTE WORKSPACE SEIZURE
 set "ROOT_DIR=%~dp0"
+if "%ROOT_DIR:~-1%"=="\" set "ROOT_DIR=%ROOT_DIR:~0,-1%"
+echo  [SYSTEM] Seizing workspace: %ROOT_DIR%
 cd /d "%ROOT_DIR%"
 
-set "PY_DIR=%ROOT_DIR%RangeReady_OFFLINE\python"
+:: 2. ISOLATED ENGINE DETECTION
+echo  [SYSTEM] Detecting portable logic engines...
+set "PY_DIR=%ROOT_DIR%\RangeReady_OFFLINE\python"
 set "PY_EXE=%PY_DIR%\python.exe"
-set "BACKEND_MAIN=%ROOT_DIR%backend\main.py"
-set "FRONTEND_DIST=%ROOT_DIR%frontend\dist"
 
-:: 2. IRONCLAD ENVIRONMENT LOCK
-:: Lock the Python environment to the pendrive specifically.
-set "PYTHONHOME=%PY_DIR%"
-set "PYTHONPATH=%ROOT_DIR%;%PY_DIR%\Lib\site-packages"
-set "PATH=%PY_DIR%;%PY_DIR%\Scripts;%PATH%"
-
-echo  [1/2] Pre-flight Check: Verifying Pendrive Integrity...
-if not exist "%PY_EXE%" (
-    echo  [CRITICAL] Error: Portable Engine not found at %PY_EXE%
-    pause
-    exit /b 1
-)
-
-:: 3. PORT CONFLICT CHECK (Ensures Port 8787 and 5173 are free)
-netstat -ano | findstr :8787 >nul
-if %ERRORLEVEL% equ 0 (
-    echo  [WARN] Port 8787 already in use. Please close other RangeReady instances.
-)
-netstat -ano | findstr :5173 >nul
-if %ERRORLEVEL% equ 0 (
-    echo  [WARN] Port 5173 already in use. Please close other Dashboard instances.
-)
-
-:: Sanity check for internal libraries
-"%PY_EXE%" -c "import fastapi, pyvisa, sqlalchemy, numpy, uvicorn" >nul 2>&1
-if %ERRORLEVEL% equ 0 (
-    echo  [OK] Pendrive environment is 100%% synchronized.
+if exist "%PY_EXE%" (
+    echo  [92m [OK] Portable Python Engine detected.[0m
+    echo  [INFO] Stripping host environment variables to prevent leakage...
+    set "PYTHONHOME=%PY_DIR%"
+    set "PATH=%PY_DIR%;%PY_DIR%\Scripts;%PATH%"
 ) else (
-    echo  [ERROR] Environment load failed. Check if all files were copied correctly.
-    pause
-    exit /b 1
+    echo  [93m [WARN] Portable Engine missing. Falling back to System Python...[0m
+    set "PY_EXE=python"
 )
 
-:: 4. INDUSTRIAL ENGINE IGNITION
-echo  [2/2] Launching RangeReady Telemetry Engines...
-
-:: Start Backend (Force CWD to Root for relative paths)
-start "RangeReady_Backend" /min cmd /c "cd /d "%ROOT_DIR%" && set PYTHONHOME=%PY_DIR% && set PYTHONPATH=%ROOT_DIR% && "%PY_EXE%" "%BACKEND_MAIN%""
-
-:: Start Frontend UI Server
-start "RangeReady_Dashboard_Server" /min cmd /c "cd /d "%FRONTEND_DIST%" && "%PY_EXE%" -m http.server 5173"
-
-:: 5. INTERFACE INITIALIZATION
-echo  [WAIT] Handshaking with Host GUI...
-timeout /t 6 /nobreak >nul
-
-:: Launch Chrome in Industrial App Mode (Professional feel)
-set "CHROME_PATH=C:\Program Files\Google\Chrome\Application\chrome.exe"
-set "CHROME_V2=C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
-
-if exist "%CHROME_PATH%" (
-    start "" "%CHROME_PATH%" --app=http://localhost:5173
-) else if exist "%CHROME_V2%" (
-    start "" "%CHROME_V2%" --app=http://localhost:5173
-) else (
-    echo  [INFO] Chrome not found. Using system default browser.
-    start http://localhost:5173
+:: 3. BACKEND INJECTION & PATHING
+echo  [SYSTEM] Injecting hardware drivers and backend services...
+set PYTHONPATH=
+set "PYTHONPATH=%ROOT_DIR%;%ROOT_DIR%\backend"
+if exist "%ROOT_DIR%\RangeReady_OFFLINE\backend" (
+    echo  [INFO] Integrating OFFLINE backend assets...
+    set "PYTHONPATH=%ROOT_DIR%\RangeReady_OFFLINE;%ROOT_DIR%\RangeReady_OFFLINE\backend;%PYTHONPATH%"
 )
 
+:: 4. INDUSTRIAL CLEANUP
+echo  [SYSTEM] Preparing for mission-critical boot...
+if exist "Running" del /f /q "Running"
+
+:: 5. LAUNCH INTELLIGENT SYSTEM MANAGER
 echo.
-echo ============================================================================
-echo  SYSTEM ONLINE: PENDRIVE MODE ACTIVE
-echo ============================================================================
-echo  - Host Interaction: ISOLATED
-echo  - Network: AIR-GAPPED
-echo  - Root Directory: %ROOT_DIR%
-echo ============================================================================
-echo.
-echo  STAY LIVE: Do not close this console during the presentation.
+echo  [94m----------------------------------------------------------------------------[0m
+echo  [96m [LAUNCH] Initializing Apex System Manager...[0m
+echo  [96m [INFO]   Rapid GUI deployment sequence active.[0m
+echo  [96m [INFO]   Background hardware discovery will follow after GUI handshake.[0m
+echo  [94m----------------------------------------------------------------------------[0m
 echo.
 
-pause
+:: Execute start.py using the portable python
+"%PY_EXE%" "%ROOT_DIR%\start.py"
+
+if %ERRORLEVEL% neq 0 (
+    echo.
+    echo  [91m [CRITICAL ERROR] RangeReady System Manager exited with code %ERRORLEVEL%[0m
+    echo  [91m ------------------------------------------------------------[0m
+    echo  [INFO] Check backend_crash.log for secondary forensics.
+    echo  [91m ------------------------------------------------------------[0m
+    echo.
+    echo  [MISSION CONTROL] Press any key to dump diagnostics and exit...
+    pause > nul
+)
+
+exit /b 0

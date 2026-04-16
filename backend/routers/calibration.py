@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, Annotated
 
-router = APIRouter(prefix="/api/calibration", tags=["Calibration"])
+router = APIRouter(prefix="", tags=["Calibration"])
 
 class CalibrationCreate(BaseModel):
     cal_type: str = "OSL"

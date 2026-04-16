@@ -12,6 +12,8 @@ import {
   HardDrives,
   Flask,
   Cpu,
+  Joystick,
+  TerminalWindow
 } from "@phosphor-icons/react";
 import { GvbLogo } from "../ui/Logo";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
@@ -57,8 +59,9 @@ export const PersistentSidebar: React.FC = () => {
     };
   }, [resize, stopResizing]);
 
-    const navItems = [
+    const mainNav = [
     { name: "RF System Dashboard", path: "/dashboard", icon: <House weight="fill" size={24} /> },
+    { name: "Master Hardware Control", path: "/control", icon: <Joystick weight="duotone" size={24} /> },
     { name: "SCPI Instrumentation Control", path: "/runner", icon: <Pulse weight="duotone" size={24} /> },
     { name: "Equipment Logistics Registry", path: "/registry", icon: <HardDrives weight="duotone" size={24} /> },
     { name: "Vector Network Analysis Interface", path: "/calibration", icon: <Flask weight="duotone" size={24} /> },
@@ -66,8 +69,45 @@ export const PersistentSidebar: React.FC = () => {
     { name: "Automated Test Procedure Engine", path: "/templates", icon: <ShieldCheck weight="duotone" size={24} /> },
     { name: "Hardware Configuration and Settings", path: "/settings", icon: <Gear weight="fill" size={24} /> },
     { name: "Advanced Signal Processing", path: "/intelligence", icon: <Cpu weight="duotone" size={24} /> },
-    { name: "Master Instrument Control Interface", path: "/control", icon: <Pulse weight="duotone" size={24} /> },
+    { name: "SCPI Terminal Console", path: "/scpi", icon: <TerminalWindow weight="duotone" size={24} /> },
   ];
+
+  const renderNavGroup = (items: typeof mainNav, title?: string) => (
+    <div className="space-y-1">
+      {title && !isCollapsed && (
+        <div className="px-4 pt-4 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-white/30 italic">
+          {title}
+        </div>
+      )}
+      {items.map((item) => (
+        <NavLink
+          key={item.path}
+          to={item.path}
+          className={({ isActive }) =>
+            `flex items-center gap-4 px-3 py-3 rounded-lg transition-all duration-150 group ${
+              isActive 
+                ? "nav-active" 
+                : "text-text-tertiary hover:bg-[#131B2C] hover:text-white"
+            }`
+          }
+        >
+          <span className="flex-shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">{item.icon}</span>
+          <AnimatePresence mode="wait">
+            {!isCollapsed && (
+              <motion.span
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                className="text-[11px] font-bold uppercase tracking-wider whitespace-nowrap"
+              >
+                {item.name}
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </NavLink>
+      ))}
+    </div>
+  );
 
   return (
     <motion.div
@@ -83,34 +123,8 @@ export const PersistentSidebar: React.FC = () => {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            className={({ isActive }) =>
-              `flex items-center gap-4 px-3 py-3 rounded-lg transition-all duration-150 group ${
-                isActive 
-                  ? "nav-active" 
-                  : "text-text-tertiary hover:bg-[#131B2C] hover:text-white"
-              }`
-            }
-          >
-            <span className="flex-shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">{item.icon}</span>
-            <AnimatePresence>
-              {!isCollapsed && (
-                <motion.span
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  className="text-[11px] font-bold uppercase tracking-wider whitespace-nowrap"
-                >
-                  {item.name}
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </NavLink>
-        ))}
+      <nav className="flex-1 px-3 py-6 space-y-6 overflow-y-auto scrollbar-hide">
+        {renderNavGroup(mainNav)}
       </nav>
 
       {/* Footer / Collapse Toggle */}

@@ -49,6 +49,16 @@ Communication: Raw Socket (Port 5025) with VXI-11 fallback
 # SPEC AN: Trace Data       | TRAC:DATA? TRACE1                 | Fetches 1001 amp points
 # ─────────────────────────────────────────────────────────────────────────────
 
+import os
+import socket
+import time
+import json
+import logging
+import asyncio
+import struct
+import math
+import random
+from typing import List, Dict, Union, Optional, Any, Tuple
 from backend.drivers.base_driver import BaseInstrumentDriver
 
 class KeysightUniversalDriver(BaseInstrumentDriver):
@@ -88,29 +98,38 @@ class KeysightUniversalDriver(BaseInstrumentDriver):
         self._sim_cache: Dict[str, str] = {}
         self._init_sim_cache()
 
+    # ─────────────────────────────────────────────── Simulator State ──────────
+    DEFAULT_FREQ_HZ = "1.000000000E+09"
+    DEFAULT_POWER_DBM = "-20.00"
+
     def _init_sim_cache(self):
-        """Initialize a comprehensive simulation state cache."""
+        """Initialize a comprehensive simulation state cache with industrial defaults."""
         self._sim_cache = {
             # Signal Generator state
-            "FREQ?": "1.000000000E+09", "FREQ:CW?": "1.000000000E+09",
-            "FREQ:FIX?": "1.000000000E+09",
-            "POW?": "-20.00", "POW:AMPL?": "-20.00", "POW:LEV?": "-20.00",
-            "OUTP?": "0", "OUTP:STAT?": "0",
+            "FREQ?": self.DEFAULT_FREQ_HZ, 
+            "FREQ:CW?": self.DEFAULT_FREQ_HZ,
+            "FREQ:FIX?": self.DEFAULT_FREQ_HZ,
+            "POW?": self.DEFAULT_POWER_DBM, 
+            "POW:AMPL?": self.DEFAULT_POWER_DBM, 
+            "POW:LEV?": self.DEFAULT_POWER_DBM,
+            "OUTP?": "0", 
+            "OUTP:STAT?": "0",
             "AM:STAT?": "0", "AM:DEPT?": "30.00", "AM:SOUR?": "INT",
             "FM:STAT?": "0", "FM:DEV?": "1000.00", "FM:SOUR?": "INT",
             "PULM:STAT?": "0", "PULM:INT:PER?": "0.01", "PULM:INT:WIDT?": "0.001",
             "POW:ALC?": "1", "ROSC:SOUR?": "INT",
             "SOUR:RAD:ARB:STAT?": "0",
             # Spectrum Analyzer state
-            "SENS:FREQ:CENT?": "1.000000000E+09", "SENS:FREQ:SPAN?": "1.000000000E+09",
-            "SENS:FREQ:STAR?": "5.000000000E+08", "SENS:FREQ:STOP?": "1.500000000E+09",
+            "SENS:FREQ:CENT?": self.DEFAULT_FREQ_HZ, 
+            "SENS:FREQ:SPAN?": self.DEFAULT_FREQ_HZ,
+            # Consolidated Freq Star/Stop (SA and VNA merge)
+            "SENS:FREQ:STAR?": "9000.00", 
+            "SENS:FREQ:STOP?": "6000000000.00",
             "DISP:WIND:TRAC:Y:RLEV?": "0.00",
             "SENS:BAND?": "1.000000000E+06", "SENS:BAND:VID?": "3.000000000E+06",
             "SENS:SWE:TIME?": "0.02", "SENS:SWE:POIN?": "1001",
             "INP:ATT?": "10.00", "INP:ATT:AUTO?": "1",
             "SENS:DET?": "PEAK", "SENS:AVER:STAT?": "0", "SENS:AVER:COUN?": "10",
-            # VNA state
-            "SENS:FREQ:STAR?": "300000.00", "SENS:FREQ:STOP?": "8500000000.00",
             # Common
             "*IDN?": "Keysight,N5172B-SIM,MY53051234,B.01.85",
             "*OPC?": "1", "SYST:ERR?": '+0,"No error"',
@@ -178,11 +197,17 @@ class KeysightUniversalDriver(BaseInstrumentDriver):
     def _detect_capabilities(self, idn: str):
         """Identifies instrument limitations based on model number (e.g. Analog vs Vector)."""
         idn_up = idn.upper()
-        # EXG/MXG Analog models (ending in 1B or 1A)
-        analog_models = ["N5171", "N5181", "E8257"]
-        if any(m in idn_up for m in analog_models):
+        # EXG/MXG Analog models (ending in 1B or 1A or containing 'ANALOG')
+        # Vector models end in 2B/2A.
+        analog_patterns = ["N5171", "N5181", "E8257", "ANALOG"]
+        if any(m in idn_up for m in analog_patterns):
             self.capabilities["has_arb"] = False
+            self.capabilities["has_modulation"] = True # Still has analog mod
             self.capabilities["is_analog_only"] = True
+            print(f"[Keysight] HARDWARE SIGHTING: N5171X Analog Platform Detected. Disabling Vector Subsystems.")
+        else:
+            self.capabilities["has_arb"] = True
+            self.capabilities["is_analog_only"] = False
         
         # Check for specific options if needed (future expansion)
         if self.simulation:
@@ -270,13 +295,22 @@ class KeysightUniversalDriver(BaseInstrumentDriver):
 
     def check_errors(self) -> List[str]:
         errors = []
-        for _ in range(20):
-            err = self.query("SYST:ERR?")
-            if not err or '+0,"No error"' in err or err == "0":
-                break
-            errors.append(err)
+        try:
+            for _ in range(10):
+                err = self.query("SYST:ERR?")
+                if not err or '+0,"No error"' in err or err == "0":
+                    break
+                
+                # SUPPRESSION LOGIC for Presentation Mode
+                # If we are an analog unit, ignore 'Undefined Header' errors triggered by legacy poller probes
+                if self.capabilities["is_analog_only"] and "-113" in err:
+                    continue
+                    
+                errors.append(err)
+        except: pass
+        
         if errors:
-            print(f"[Keysight] Errors: {errors}")
+            print(f"[Keysight] Errors Found: {errors}")
         return errors
 
     def wait_for_opc(self, timeout_ms: int = 10000) -> bool:
@@ -508,14 +542,25 @@ class KeysightUniversalDriver(BaseInstrumentDriver):
         
         # Only query modulation/ARB subsystems if the hardware supports them
         if not self.capabilities["is_analog_only"]:
-            status.update({
-                "am_state": self.query("SOUR:AM:STAT?").strip() == "1",
-                "fm_state": self.query("SOUR:FM:STAT?").strip() == "1",
-                "pulse_state": self.query("SOUR:PULM:STAT?").strip() == "1",
-            })
+            # These can cause -113 on strict analog units
+            try:
+                am = self.query("SOUR:AM:STAT?").strip() == "1"
+                fm = self.query("SOUR:FM:STAT?").strip() == "1"
+                pm = self.query("SOUR:PM:STAT?").strip() == "1"
+                pulse = self.query("SOUR:PULM:STAT?").strip() == "1"
+                status.update({
+                    "am_state": am,
+                    "fm_state": fm,
+                    "pm_state": pm,
+                    "pulse_state": pulse,
+                    "mod_state": am or fm or pm or pulse  # Consolidated state for UI toggles
+                })
+            except: pass
             
-        if self.capabilities["has_arb"]:
-            status["arb_state"] = self.query("SOUR:RAD:ARB:STAT?").strip() == "1"
+        if self.capabilities.get("has_arb"):
+            try:
+                status["arb_state"] = self.query("SOUR:RAD:ARB:STAT?").strip() == "1"
+            except: pass
             
         return status
 

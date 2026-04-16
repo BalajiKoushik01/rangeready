@@ -5,19 +5,84 @@ Communication: Raw Socket (Port 5025) with VXI-11 fallback
 """
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional, List, Tuple, Literal
+from typing import Optional, List, Tuple, Literal, Dict, Any
 from ..drivers.keysight_universal import KeysightUniversalDriver
 from ..drivers.rs_universal import RSUniversalDriver
 from ..drivers.generic_scpi import GenericSCPIDriver
-from ..services.config_service import config_service
-from ..services.asset_service import asset_service
-from ..services.driver_registry import driver_registry
+from backend.services.config_service import config_service
+from backend.services.asset_service import asset_service
+from backend.services.driver_registry import driver_registry
 
 router = APIRouter(tags=["Master Instrument Control"])
 
 SIGGEN = "Signal Generator"
 ANALYZER = "Spectrum Analyzer"
 VNA = "VNA"
+
+@router.post("/siggen/control")
+async def siggen_control(req: Dict[str, Any], manufacturer: Optional[str] = None):
+    driver = resolve_driver("Signal Generator", manufacturer)
+    if not driver:
+        return {"status": "error", "message": "Signal Generator not found or offline."}
+    
+    intent = req.get("intent")
+    value = req.get("value")
+    
+    try:
+        if intent == "set_frequency":
+            await driver_registry.enqueue_command(req.get("inst_id", -1), driver.execute, "set_frequency", value=float(value))
+        elif intent == "set_power":
+            await driver_registry.enqueue_command(req.get("inst_id", -1), driver.execute, "set_power", value=float(value))
+        elif intent == "rf_toggle":
+            cmd_intent = "rf_on" if value else "rf_off"
+            await driver_registry.enqueue_command(req.get("inst_id", -1), driver.execute, cmd_intent)
+        elif intent == "mod_toggle":
+            type = req.get("mod_type", "am")
+            if value: driver.execute(f"{type}_on")
+            else: driver.execute(f"{type}_off")
+        elif intent == "arb_toggle":
+            if value: driver.execute("arb_on")
+            else: driver.execute("arb_off")
+            
+        return {"status": "success", "echo": req}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@router.post("/analyzer/control")
+async def analyzer_control(req: Dict[str, Any], manufacturer: Optional[str] = None):
+    driver = resolve_driver("Spectrum Analyzer", manufacturer)
+    if not driver:
+        return {"status": "error", "message": "Spectrum Analyzer not found."}
+        
+    intent = req.get("intent")
+    value = req.get("value")
+    
+    try:
+        if intent == "set_center":
+            driver.execute("sa_center", value=float(value))
+        elif intent == "set_span":
+            driver.execute("sa_span", value=float(value))
+        elif intent == "set_ref_level":
+            driver.execute("sa_ref_level", value=float(value))
+        elif intent == "set_rbw":
+            driver.execute("sa_rbw", value=float(value))
+        elif intent == "run_sweep":
+            driver.execute("sa_init_single")
+            
+        return {"status": "success", "echo": req}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@router.get("/analyzer/trace")
+async def get_analyzer_trace(manufacturer: Optional[str] = None):
+    driver = resolve_driver("Spectrum Analyzer", manufacturer)
+    if not driver: return {"status": "error"}
+    
+    try:
+        trace_data = driver.execute("sa_trace")
+        return {"status": "success", "trace": trace_data}
+    except:
+        return {"status": "error"}
 
 # ─────────────────────────── Helpers ─────────────────────────────────────────
 def get_keysight(addr: str) -> KeysightUniversalDriver:
@@ -40,16 +105,13 @@ async def resolve_driver(manufacturer: str, role: str):
     sim = config_service.is_simulation_mode()
     active_asset = asset_service.get_active_instrument(role)
     
+    # Standardize driver classes
+    from ..drivers.keysight_universal import KeysightUniversalDriver
+    from ..drivers.rs_universal import RSUniversalDriver
+    
     if active_asset:
         # 1. Determine Driver Class
-        if active_asset.driver_id == "KeysightUniversalDriver":
-            from ..drivers.keysight_universal import KeysightUniversalDriver
-            drv_cls = KeysightUniversalDriver
-        elif active_asset.driver_id == "RSUniversalDriver":
-            from ..drivers.rs_universal import RSUniversalDriver
-            drv_cls = RSUniversalDriver
-        else:
-            drv_cls = GenericSCPIDriver
+        drv_cls = KeysightUniversalDriver if active_asset.driver_id == "KeysightUniversalDriver" else RSUniversalDriver
             
         # 2. Get/Create Persistent Driver from Registry
         drv = await driver_registry.get_driver(active_asset.id, drv_cls, sim=sim)
@@ -59,7 +121,10 @@ async def resolve_driver(manufacturer: str, role: str):
     # Fallback to direct connection if no asset registry entry exists
     addr = config_service.get_instrument_ip(role)
     if not addr:
-        raise HTTPException(status_code=404, detail=f"No active instrument for {role}")
+        # For testing/demo, if no IP is set, we still return a simulation driver
+        if sim:
+            return (KeysightUniversalDriver(True) if manufacturer == "keysight" else RSUniversalDriver(True)), -1
+        raise HTTPException(status_code=404, detail=f"No active instrument for {role}. Set IP in Config.")
         
     drv = KeysightUniversalDriver(sim) if manufacturer == "keysight" else RSUniversalDriver(sim)
     if not drv.connect(addr):
@@ -68,11 +133,13 @@ async def resolve_driver(manufacturer: str, role: str):
 
 # ─────────────────────────── Request Models ──────────────────────────────────
 class FrequencyRequest(BaseModel):
-    freq_hz: float = Field(gt=0, description="Frequency in Hertz")
+    freq_hz: Optional[float] = None
+    value: Optional[float] = None # Fallback for GUI
     manufacturer: Literal["keysight", "rs"] = "keysight"
 
 class PowerRequest(BaseModel):
-    power_dbm: float = Field(ge=-130, le=30)
+    power_dbm: Optional[float] = None
+    value: Optional[float] = None # Fallback for GUI
     manufacturer: Literal["keysight", "rs"] = "keysight"
 
 class RFOutputRequest(BaseModel):
@@ -82,10 +149,10 @@ class RFOutputRequest(BaseModel):
 
 class ModulationRequest(BaseModel):
     state: bool
-    type: Literal["AM", "FM", "PM", "PULSE"]
+    type: str # Literals can be brittle during rapid industrialization
     manufacturer: Literal["keysight", "rs"] = "keysight"
-    depth: float = 30.0          # AM depth %
-    deviation: float = 10000.0  # FM/PM deviation Hz/rad
+    depth: float = 30.0
+    deviation: float = 10000.0
     source: str = "INT"
 
 class PulseRequest(BaseModel):
@@ -112,8 +179,10 @@ class SweepRequest(BaseModel):
     manufacturer: Literal["keysight", "rs"] = "keysight"
 
 class AnalyzerFreqRequest(BaseModel):
-    center_hz: float
-    span_hz: float
+    center_hz: Optional[float] = None
+    span_hz: Optional[float] = None
+    center: Optional[float] = None # Fallback
+    span: Optional[float] = None # Fallback
     manufacturer: Literal["keysight", "rs"] = "keysight"
 
 class AnalyzerSettingsRequest(BaseModel):
@@ -124,7 +193,7 @@ class AnalyzerSettingsRequest(BaseModel):
     detector: Optional[str] = None
     rbw: Optional[float] = None
     vbw: Optional[float] = None
-    avg_state: bool = False
+    avg_state: Optional[bool] = None
     avg_count: int = 10
     sweep_time: Optional[float] = None
     points: Optional[int] = None
@@ -162,23 +231,47 @@ class VNARequest(BaseModel):
 @router.post("/siggen/frequency", responses={503: {"description": "Signal Generator not reachable"}})
 async def set_sg_frequency(req: FrequencyRequest):
     drv, inst_id = await resolve_driver(req.manufacturer, SIGGEN)
+    from ..services.scpi_negotiation_engine import SCPINegotiationEngine
+    engine = SCPINegotiationEngine(drv)
+    
+    val = req.freq_hz if req.freq_hz is not None else req.value
+    if val is None:
+        raise HTTPException(status_code=400, detail="Frequency value required")
+
     async with driver_registry.lock_and_broadcast(inst_id):
-        drv.sg_set_frequency(req.freq_hz)
-        return {"status": "ok", "freq_hz": req.freq_hz}
+        result = await driver_registry.enqueue_command(inst_id, engine.execute_intent, "set_freq", {"value": val})
+        if result["status"] == "success":
+            return {"status": "ok", "freq_hz": val}
+        raise HTTPException(status_code=500, detail=str(result.get("errors", "Instrumentation Error")))
 
 @router.post("/siggen/power")
 async def set_sg_power(req: PowerRequest):
     drv, inst_id = await resolve_driver(req.manufacturer, SIGGEN)
+    from ..services.scpi_negotiation_engine import SCPINegotiationEngine
+    engine = SCPINegotiationEngine(drv)
+    
+    val = req.power_dbm if req.power_dbm is not None else req.value
+    if val is None:
+        raise HTTPException(status_code=400, detail="Power value required")
+
     async with driver_registry.lock_and_broadcast(inst_id):
-        drv.sg_set_power(req.power_dbm)
-        return {"status": "ok", "power_dbm": req.power_dbm}
+        result = await engine.execute_intent("set_pow", {"value": val})
+        if result["status"] == "success":
+            return {"status": "ok", "power_dbm": val}
+        raise HTTPException(status_code=500, detail=str(result.get("errors", "Instrumentation Error")))
 
 @router.post("/siggen/rf")
 async def set_sg_rf(req: RFOutputRequest):
     drv, inst_id = await resolve_driver(req.manufacturer, SIGGEN)
+    from ..services.scpi_negotiation_engine import SCPINegotiationEngine
+    engine = SCPINegotiationEngine(drv)
+    
+    intent = "rf_on" if req.state else "rf_off"
     async with driver_registry.lock_and_broadcast(inst_id):
-        drv.sg_set_rf_output(req.state)
-        return {"status": "ok", "rf_state": req.state}
+        result = await driver_registry.enqueue_command(inst_id, engine.execute_intent, intent)
+        if result["status"] == "success":
+            return {"status": "ok", "rf_state": req.state}
+        raise HTTPException(status_code=500, detail=str(result.get("errors", "Instrumentation Error")))
 
 @router.post("/siggen/modulation")
 async def set_sg_modulation(req: ModulationRequest):
@@ -371,6 +464,7 @@ def send_raw_scpi(
     is_query: bool = False
 ):
     """Direct SCPI access for advanced users and debugging."""
+
     try:
         if manufacturer == "keysight":
             drv = KeysightUniversalDriver(simulation=config_service.is_simulation_mode())

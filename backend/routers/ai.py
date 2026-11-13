@@ -23,6 +23,8 @@ DATA FLOW (agentic-execute):
 """
 
 import asyncio
+import os
+import logging
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -234,6 +236,15 @@ async def agentic_execute(req: AgenticRequest):
       → PluginManager → Driver → Hardware
       → broadcast() → TelemetrySentry + DiscoveryVisibilityPanel
     """
+    # AI-generated SCPI is never sent to physical equipment unless an operator
+    # explicitly enables this dangerous capability in the server environment.
+    # Browser-selected simulation=False is not an authorization decision.
+    if not req.simulation and os.environ.get("RANGEREADY_ALLOW_AI_HARDWARE_EXECUTION") != "1":
+        raise HTTPException(
+            status_code=403,
+            detail="AI hardware execution is disabled; use simulation or obtain operator approval",
+        )
+    driver = None
     try:
         sim = req.simulation
         driver = PluginManager.get_driver(req.driver_name, simulation=sim)
@@ -278,12 +289,16 @@ async def agentic_execute(req: AgenticRequest):
                 "timestamp": True,
             })
 
-        driver.disconnect()
         result["idn"] = idn
         return result
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        logging.getLogger("rangeready.ai").exception("Agentic execution failed")
+        raise HTTPException(status_code=500, detail="Instrument execution failed")
+    finally:
+        if driver is not None:
+            driver.disconnect()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

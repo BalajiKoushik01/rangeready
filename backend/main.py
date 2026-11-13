@@ -107,13 +107,22 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="GVB Tech RF API", version="1.5.0", lifespan=lifespan)
 
-# CORS configuration
+# Only explicit browser origins may access the local instrument API.
+# Deployments on other hosts must configure RANGEREADY_ALLOWED_ORIGINS.
+allowed_origins = [
+    item.strip()
+    for item in os.environ.get(
+        "RANGEREADY_ALLOWED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",")
+    if item.strip() and item.strip() != "*"
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=allowed_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # Include Routers
